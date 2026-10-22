@@ -28,7 +28,7 @@ void main( uint3 DTid : SV_DispatchThreadID )
         float3 SamplePos = Origin + Dir * ((i + 0.5) * StepSize);
         float Height = length(SamplePos) - BottomRadius;
         //≥Ù¿Ã¿« ∫˚ ∞®º“¿≤ * µ®≈∏
-        OpticalDepth += GetExtinction(Height) * StepSize;
+        OpticalDepth += GetOpticalCoefficients(Height).TotalExtinction * StepSize;
     }
 
     TransmittanceLut[DTid.xy] = float4(exp(-OpticalDepth), 1.0);

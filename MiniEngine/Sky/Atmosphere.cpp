@@ -8,36 +8,63 @@
 #include "BufferManager.h"
 #include "EngineTuning.h"
 #include "EngineProfiling.h"
+#include "Camera.h"
 
 #include "CompiledShaders/AtmosphereTransmittanceLutCS.h"
 #include "CompiledShaders/AtmosphereVolumeTestCS.h"
 #include "CompiledShaders/SkyFullscreenVS.h"
 #include "CompiledShaders/SkyDebugViewPS.h"
 #include "CompiledShaders/SkyDebugViewVolumePS.h"
+#include "CompiledShaders/AtmosphereRaymarchingReferencePS.h"
 
 using namespace Graphics;
 
 namespace
 {
-    // AtmosphereCommon.hlsli의 cbuffer와 같은 배치 (Math::Vector3는 16바이트라 쓰지 않음)
+    //AtmosphereCommon.hlsli
     __declspec(align(16)) struct AtmosphereConstants
     {
-        float RayleighScattering[3];    float RayleighScaleHeight;
-        float MieScattering[3];         float MieScaleHeight;
-        float MieAbsorption[3];         float MiePhaseG;
-        float OzoneAbsorption[3];       float OzoneCenterHeight;
-        float GroundAlbedo[3];          float OzoneHalfWidth;
-        float BottomRadius;             float TopRadius;    float Pad[2];
+        float RayleighScattering[3];    
+        float RayleighScaleHeight;
+
+        float MieScattering[3];         
+        float MieScaleHeight;
+
+        float MieExtinction[3];//Scattering + absorption   
+        float MiePhaseG;
+
+        float OzoneExtinction[3];       
+        float OzoneCenterHeight;
+
+        float GroundAlbedo[3];          
+        float OzoneHalfWidth;
+
+        float BottomRadius;
+        float TopRadius;
+        float Pad[2];
     };
-    static_assert(sizeof(AtmosphereConstants) == 96, "HLSL AtmosphereConstants와 크기가 다름");
+
+    __declspec(align(16)) struct SkyViewConstants
+    {
+        Math::Matrix4 InvViewProj;
+
+        float CameraPositionKm[3];      
+        float SunIlluminance;
+
+        float SunDirection[3];          
+        float SunDiskCosAngle;
+
+        float SunDiskIntensity;         
+        float Pad[3];
+    };
 
     enum RootBindings
     {
-        kAtmosphereCBV,     // b0
-        kDebugConstants,    // b1
-        kSRVs,              // t0 ~ t3
-        kUAVs,              // u0 ~ u3
-
+        kAtmosphereCBV,     //b0
+        kDebugConstants,    //b1
+        kViewCBV,           //b2
+        kSRVs,              //t0 ~ t3
+        kUAVs,              //u0 ~ u3
         kNumRootBindings
     };
 
@@ -46,14 +73,16 @@ namespace
     const uint32_t kVolumeTestSize = 32;
     const uint32_t kDebugViewScale = 3;
     const uint32_t kDebugViewMargin = 16;
-    const D3D12_RESOURCE_STATES kShaderResourceState =
-        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    const D3D12_RESOURCE_STATES kShaderResourceState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    const float kWorldUnitsToKm = 1.0f / 100000.0f; //cm to km
+    const float kSunDiskHalfAngleRadians = 0.5f * 0.53f * Math::XM_PI / 180.0f;
 
     RootSignature s_RootSig;
     ComputePSO s_TransmittanceLutPSO(L"Atmosphere: Transmittance LUT CS");
     ComputePSO s_VolumeTestPSO(L"Atmosphere: Volume Test CS");
     GraphicsPSO s_DebugViewPSO(L"Atmosphere: Debug View PSO");
     GraphicsPSO s_DebugViewVolumePSO(L"Atmosphere: Debug View Volume PSO");
+    GraphicsPSO s_AtmosphereRaymarchingReferencePSO(L"Atmosphere: Raymarching PSO");
 
     ColorBuffer s_TransmittanceLut;
     VolumeBuffer s_VolumeTest;
@@ -65,6 +94,9 @@ namespace
     BoolVar s_ForceUpdateLuts("Graphics/Atmosphere/Force Update LUTs", false);
     BoolVar s_ShowTransmittanceLut("Graphics/Atmosphere/Debug/Show Transmittance LUT", false);
     BoolVar s_ShowVolumeTest("Graphics/Atmosphere/Debug/Show Volume Test", false);
+    BoolVar s_EnableAtmosphere("Graphics/Atmosphere/Enable Atmosphere", true);
+    NumVar s_CameraAltitudeKm("Graphics/Atmosphere/Camera Altitude Offset (km)", 0.0f, 0.0f, 300.0f, 5.0f);
+    NumVar s_SunDiskIntensity("Graphics/Atmosphere/Sun Disk Intensity", 20.0f, 0.0f, 200.0f, 5.0f);
     NumVar s_VolumeTestSlice("Graphics/Atmosphere/Debug/Volume Slice", 0.5f, 0.0f, 1.0f, 0.05f);
 
     void SetFloat3(float(&Dest)[3], float X, float Y, float Z)
@@ -77,15 +109,15 @@ namespace
     // 지구 대기 기본값 (단위 km, /km). 노트 6절 – 참고 구현에서 확인 필요
     void SetDefaultConstants(void)
     {
-        SetFloat3(s_Constants.RayleighScattering, 5.802e-3f, 13.558e-3f, 33.1e-3f);
+        SetFloat3(s_Constants.RayleighScattering, 0.005802f, 0.013558f, 0.033100f);
         s_Constants.RayleighScaleHeight = 8.0f;
 
-        SetFloat3(s_Constants.MieScattering, 3.996e-3f, 3.996e-3f, 3.996e-3f);
-        SetFloat3(s_Constants.MieAbsorption, 4.40e-3f, 4.40e-3f, 4.40e-3f);
+        SetFloat3(s_Constants.MieScattering, 0.003996f, 0.003996f, 0.003996f);
+        SetFloat3(s_Constants.MieExtinction, 0.004440f, 0.004440f, 0.004440f);
         s_Constants.MieScaleHeight = 1.2f;
         s_Constants.MiePhaseG = 0.8f;
 
-        SetFloat3(s_Constants.OzoneAbsorption, 0.650e-3f, 1.881e-3f, 0.085e-3f);
+        SetFloat3(s_Constants.OzoneExtinction, 0.000650f, 0.001881f, 0.000085f);
         s_Constants.OzoneCenterHeight = 25.0f;
         s_Constants.OzoneHalfWidth = 15.0f;
 
@@ -115,6 +147,20 @@ namespace
         PSO.SetComputeShader(ComputeShader, ComputeShaderSize);
         PSO.Finalize();
     }
+
+    void InitializeSkyPSO(GraphicsPSO& PSO, const void* PixelShader, size_t PixelShaderSize)
+    {
+        PSO.SetRootSignature(s_RootSig);
+        PSO.SetRasterizerState(RasterizerTwoSided);
+        PSO.SetBlendState(BlendDisable);
+        PSO.SetDepthStencilState(DepthStateReadOnly);
+        PSO.SetInputLayout(0, nullptr);
+        PSO.SetPrimitiveTopologyType(D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE);
+        PSO.SetRenderTargetFormat(g_SceneColorBuffer.GetFormat(), g_SceneDepthBuffer.GetFormat());
+        PSO.SetVertexShader(g_pSkyFullscreenVS, sizeof(g_pSkyFullscreenVS));
+        PSO.SetPixelShader(PixelShader, PixelShaderSize);
+        PSO.Finalize();
+    }
 }
 
 void Atmosphere::Initialize(void)
@@ -123,6 +169,7 @@ void Atmosphere::Initialize(void)
     s_RootSig.InitStaticSampler(0, SamplerLinearClampDesc);
     s_RootSig[kAtmosphereCBV].InitAsConstantBuffer(0);
     s_RootSig[kDebugConstants].InitAsConstants(1, 4);
+    s_RootSig[kViewCBV].InitAsConstantBuffer(2);
     s_RootSig[kSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 4);
     s_RootSig[kUAVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 0, 4);
     s_RootSig.Finalize(L"Atmosphere");
@@ -131,6 +178,7 @@ void Atmosphere::Initialize(void)
     InitializeComputePSO(s_VolumeTestPSO, g_pAtmosphereVolumeTestCS, sizeof(g_pAtmosphereVolumeTestCS));
     InitializeDebugViewPSO(s_DebugViewPSO, g_pSkyDebugViewPS, sizeof(g_pSkyDebugViewPS));
     InitializeDebugViewPSO(s_DebugViewVolumePSO, g_pSkyDebugViewVolumePS, sizeof(g_pSkyDebugViewVolumePS));
+    InitializeSkyPSO(s_AtmosphereRaymarchingReferencePSO, g_pAtmosphereRaymarchingReferencePS, sizeof(g_pAtmosphereRaymarchingReferencePS));
 
     s_TransmittanceLut.Create(L"Atmosphere Transmittance LUT",
         kTransmittanceLutWidth, kTransmittanceLutHeight, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
@@ -182,6 +230,48 @@ void Atmosphere::Update(ComputeContext& Context)
 
         s_bVolumeTestDirty = false;
     }
+}
+
+void Atmosphere::RenderSky(
+    GraphicsContext& Context, const Math::Camera& Camera, const Math::Vector3& SunDirection,
+    float SunIlluminance, const D3D12_VIEWPORT& Viewport, const D3D12_RECT& Scissor)
+{
+    ScopedTimer _prof(L"Atmosphere Sky", Context);
+
+    Math::Vector3 CameraPos = Camera.GetPosition();
+    float CameraHeightKm = (float)CameraPos.GetY() * kWorldUnitsToKm + s_CameraAltitudeKm;
+
+    SkyViewConstants ViewConstants = {};
+    ViewConstants.InvViewProj = Math::Invert(Camera.GetViewProjMatrix());
+    ViewConstants.CameraPositionKm[0] = (float)CameraPos.GetX() * kWorldUnitsToKm;
+    ViewConstants.CameraPositionKm[1] = s_Constants.BottomRadius + Math::Max(CameraHeightKm, 0.01f);
+    ViewConstants.CameraPositionKm[2] = (float)CameraPos.GetZ() * kWorldUnitsToKm;
+    ViewConstants.SunIlluminance = SunIlluminance;
+    ViewConstants.SunDirection[0] = (float)SunDirection.GetX();
+    ViewConstants.SunDirection[1] = (float)SunDirection.GetY();
+    ViewConstants.SunDirection[2] = (float)SunDirection.GetZ();
+    ViewConstants.SunDiskCosAngle = cosf(kSunDiskHalfAngleRadians);
+    ViewConstants.SunDiskIntensity = s_SunDiskIntensity;
+
+    Context.SetRootSignature(s_RootSig);
+    Context.SetPipelineState(s_AtmosphereRaymarchingReferencePSO);
+    Context.SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+    Context.TransitionResource(s_TransmittanceLut, kShaderResourceState);
+    Context.TransitionResource(g_SceneDepthBuffer, D3D12_RESOURCE_STATE_DEPTH_READ);
+    Context.TransitionResource(g_SceneColorBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, true);
+    Context.SetRenderTarget(g_SceneColorBuffer.GetRTV(), g_SceneDepthBuffer.GetDSV_DepthReadOnly());
+    Context.SetViewportAndScissor(Viewport, Scissor);
+
+    Context.SetDynamicConstantBufferView(kAtmosphereCBV, sizeof(s_Constants), &s_Constants);
+    Context.SetDynamicConstantBufferView(kViewCBV, sizeof(ViewConstants), &ViewConstants);
+    Context.SetDynamicDescriptor(kSRVs, 0, s_TransmittanceLut.GetSRV());
+    Context.Draw(3);
+}
+
+bool Atmosphere::IsAtmosphereEnabled(void)
+{
+    return s_EnableAtmosphere;
 }
 
 void Atmosphere::RenderDebug(GraphicsContext& Context)

@@ -345,7 +345,10 @@ void ModelViewer::RenderScene( void )
                 sorter.RenderMeshes(MeshSorter::kOpaque, gfxContext, globals);
             }
 
-            Renderer::DrawSkybox(gfxContext, m_Camera, viewport, scissor);
+            if (Atmosphere::IsAtmosphereEnabled())
+                Atmosphere::RenderSky(gfxContext, m_Camera, SunDirection, g_SunLightIntensity, viewport, scissor);
+            else
+                Renderer::DrawSkybox(gfxContext, m_Camera, viewport, scissor);
 
             sorter.RenderMeshes(MeshSorter::kTransparent, gfxContext, globals);
         }

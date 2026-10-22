@@ -24,6 +24,9 @@
     <FxCompile Include="Shaders\SkyDebugViewVolumePS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
+    <FxCompile Include="Shaders\AtmosphereRaymarchingReferencePS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Atmosphere.h" />
@@ -36,6 +39,9 @@
       <Filter>Shaders</Filter>
     </None>
     <None Include="Shaders\SkyDebugView.hlsli">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Shaders\SkyViewCommon.hlsli">
       <Filter>Shaders</Filter>
     </None>
   </ItemGroup>
