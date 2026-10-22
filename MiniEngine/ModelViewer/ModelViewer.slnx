@@ -12,6 +12,9 @@
   <Project Path="../Model/Model.vcxproj" Id="5d3aeefb-8789-48e5-9bd9-09c667052d09">
     <Platform Solution="*|Windows" Project="x64" />
   </Project>
+  <Project Path="../Sky/Sky.vcxproj" Id="51847f30-bd43-4343-ae6d-10e41b1a15bb">
+    <Platform Project="x64" />
+  </Project>
   <Project Path="ModelViewer.vcxproj" Id="1813bd6e-e2af-4a3c-8c54-4e72119da993">
     <Platform Solution="*|Windows" Project="x64" />
   </Project>

@@ -56,7 +56,7 @@
   <PropertyGroup Label="UserMacros" />
   <ItemDefinitionGroup>
     <ClCompile>
-      <AdditionalIncludeDirectories>..\Model;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\Model;%(AdditionalIncludeDirectories);..\Sky</AdditionalIncludeDirectories>
     </ClCompile>
     <Link Condition="'$(Configuration)'=='Debug'">
       <AdditionalOptions>/nodefaultlib:MSVCRT %(AdditionalOptions)</AdditionalOptions>
@@ -78,6 +78,9 @@
     </ProjectReference>
     <ProjectReference Include="..\Model\Model.vcxproj">
       <Project>{5d3aeefb-8789-48e5-9bd9-09c667052d09}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\Sky\Sky.vcxproj">
+      <Project>{51847f30-bd43-4343-ae6d-10e41b1a15bb}</Project>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>

@@ -33,8 +33,9 @@
 #include "ModelLoader.h"
 #include "ShadowCamera.h"
 #include "Display.h"
+#include "Atmosphere.h"
 
-#define LEGACY_RENDERER
+//#define LEGACY_RENDERER
 
 using namespace GameCore;
 using namespace Math;
@@ -55,6 +56,7 @@ public:
     virtual void Update( float deltaT ) override;
     virtual void RenderScene( void ) override;
 
+	virtual void RenderUI(GraphicsContext& Context) override;
 private:
 
     Camera m_Camera;
@@ -154,6 +156,7 @@ void ModelViewer::Startup( void )
     SSAO::Enable = true;
 
     Renderer::Initialize();
+	Atmosphere::Initialize();
 
     LoadIBLTextures();
 
@@ -173,6 +176,8 @@ void ModelViewer::Startup( void )
         m_ModelInst.Resize(100.0f * m_ModelInst.GetRadius());
         OrientedBox obb = m_ModelInst.GetBoundingBox();
         float modelRadius = Length(obb.GetDimensions()) * 0.5f;
+        Vector3 ModelExtent = obb.GetDimensions();
+        Utility::Printf("123123 %.1f %.1f %.1f", (float)ModelExtent.GetX(), (float)ModelExtent.GetY(), (float)ModelExtent.GetZ());
         const Vector3 eye = obb.GetCenter() + Vector3(modelRadius * 0.5f, 0.0f, 0.0f);
         m_Camera.SetEyeAtUp( eye, Vector3(kZero), Vector3(kYUnitVector) );
 #endif
@@ -202,7 +207,7 @@ void ModelViewer::Cleanup( void )
 #ifdef LEGACY_RENDERER
     Sponza::Cleanup();
 #endif
-
+	Atmosphere::Shutdown();
     Renderer::Shutdown();
 }
 
@@ -258,6 +263,7 @@ void ModelViewer::RenderScene( void )
     const D3D12_RECT& scissor = m_MainScissor;
 
     ParticleEffectManager::Update(gfxContext.GetComputeContext(), Graphics::GetFrameTime());
+	Atmosphere::Update(gfxContext.GetComputeContext());
 
     if (m_ModelInst.IsNull())
     {
@@ -361,4 +367,9 @@ void ModelViewer::RenderScene( void )
         MotionBlur::RenderObjectBlur(gfxContext, g_VelocityBuffer);
 
     gfxContext.Finish();
+}
+
+void ModelViewer::RenderUI(GraphicsContext& Context)
+{
+	Atmosphere::RenderDebug(Context);
 }
