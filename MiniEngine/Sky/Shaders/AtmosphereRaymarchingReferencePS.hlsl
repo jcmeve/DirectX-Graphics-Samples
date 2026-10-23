@@ -1,7 +1,7 @@
 #include "AtmosphereCommon.hlsli"
 #include "SkyViewCommon.hlsli"
 
-static const int kSkySteps = 32;
+static const int kSkySteps = 128;
 
 Texture2D<float4> TransmittanceLut : register(t0);
 Texture2D<float4> MultiScatteringLut : register(t1);

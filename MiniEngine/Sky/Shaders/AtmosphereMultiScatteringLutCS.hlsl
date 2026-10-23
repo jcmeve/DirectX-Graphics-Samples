@@ -2,7 +2,7 @@
 
 static const uint kSqrtDirectionCount = 8;
 static const uint kDirectionCount = kSqrtDirectionCount * kSqrtDirectionCount;
-static const int kMultiScatteringSteps;
+static const int kMultiScatteringSteps = 20;
 
 Texture2D<float4> TransmittanceLut : register(t0);
 SamplerState LinearClampSampler : register(s0);
@@ -40,17 +40,14 @@ void IntegrateDirection(float3 Origin, float3 Dir, float3 SunDir, out float3 Sec
         float PlanetShadow = (RaySphereNear(SamplePos, SunDir, BottomRadius) > 0.0) ? 0.0 : 1.0;
         float3 SunTransmittance = SampleTransmittance(TransmittanceLut, LinearClampSampler, r, SunMu) * PlanetShadow;
 
-        // 2차 산란의 입력: 이 지점에서 등방으로 한 번 산란된 태양빛
         float3 InScattering = SunTransmittance * Scattering * kIsotropicPhase;
         SecondOrder += Throughput * (InScattering - InScattering * StepTransmittance) / Extinction;
 
-        // 전달 계수: 구 전체에서 적분값이 1인 빛이 들어왔을 때 다시 산란되는 양
         Transfer += Throughput * (Scattering - Scattering * StepTransmittance) / Extinction;
 
         Throughput *= StepTransmittance;
     }
 
-    // 지면 반사: 땅에 닿은 태양빛이 람베르트 반사로 다시 대기로 올라감
     if (bHitsGround)
     {
         float3 GroundPos = Origin + Dir * GroundDistance;

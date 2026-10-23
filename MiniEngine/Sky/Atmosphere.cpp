@@ -116,7 +116,6 @@ namespace
         Dest[2] = Z;
     }
 
-    // 지구 대기 기본값 (단위 km, /km). 노트 6절 – 참고 구현에서 확인 필요
     void SetDefaultConstants(void)
     {
         SetFloat3(s_Constants.RayleighScattering, 0.005802f, 0.013558f, 0.033100f);
