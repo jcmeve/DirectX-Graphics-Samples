@@ -2,7 +2,7 @@
 
 static const uint kSqrtDirectionCount = 8;
 static const uint kDirectionCount = kSqrtDirectionCount * kSqrtDirectionCount;
-static const int kMultiScatteringSteps;
+static const int kMultiScatteringSteps = 20;
 
 Texture2D<float4> TransmittanceLut : register(t0);
 SamplerState LinearClampSampler : register(s0);
