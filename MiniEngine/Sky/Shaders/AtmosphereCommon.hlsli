@@ -2,6 +2,8 @@
 #define ATMOSPHERE_COMMON_HLSLI
 
 static const float kPi = 3.14159265;
+static const float kIsotropicPhase = 1.0 / (4.0 * kPi);
+static const float kMultiScatteringLutSize = 32.0;
 
 cbuffer AtmosphereConstants : register(b0)
 {
@@ -101,7 +103,7 @@ float MiePhase(float CosTheta, float G)
     return Upper / Lower;
 }
 
-//비선형 맵핑이다. UV.y는 현재 위치가 수평선 방향으로 떨어진 거리 [0,1] UV.x는 시선 방향으로 대기외부와의 거리[0,1]
+//비선형 맵핑이다. UV.y는 현재 위치의 지표면 기준 고도 [0,1] UV.x는 시선 방향으로 대기외부와의 거리[0,1]
 //결과로 나오는 r은 현재 위치의 실제 고도, Mu는 천정각
 void UvToRmu(float2 UV, out float r, out float Mu)
 {
@@ -130,10 +132,27 @@ float2 RmuToUv(float r, float Mu)
     return float2((D - DMin) / (DMax - DMin), Rho / H);
 }
 
-//r,Mu에서의 총 투과율
 float3 SampleTransmittance(Texture2D<float4> Lut, SamplerState LinearClamp, float r, float Mu)
 {
     return Lut.SampleLevel(LinearClamp, RmuToUv(r, Mu), 0).rgb;
+}
+
+float UnitToSubUv(float u, float Resolution)
+{
+    return (u + 0.5 / Resolution) * (Resolution / (Resolution + 1.0));
+}
+
+float SubUvToUnit(float u, float Resolution)
+{
+    return (u - 0.5 / Resolution) * (Resolution / (Resolution - 1.0));
+}
+
+// y는 고도 [0~1] 정규화, x는 태양각도 -1~1을 [0,1]로
+float3 SampleMultiScattering(Texture2D<float4> Lut, SamplerState LinearClamp, float r, float SunMu)
+{
+    float2 UV = saturate(float2(SunMu * 0.5 + 0.5, (r - BottomRadius) / (TopRadius - BottomRadius)));
+    UV = float2(UnitToSubUv(UV.x, kMultiScatteringLutSize), UnitToSubUv(UV.y, kMultiScatteringLutSize));
+    return Lut.SampleLevel(LinearClamp, UV, 0).rgb;
 }
 
 #endif

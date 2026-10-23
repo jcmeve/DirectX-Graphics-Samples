@@ -12,7 +12,8 @@ cbuffer SkyViewConstants : register(b2)
     float SunDiskCosAngle;
     
     float SunDiskIntensity;
-    float3 SkyViewConstantsPad;
+    float MultiScatteringFactor;
+    float2 SkyViewConstantsPad;
 };
 
 

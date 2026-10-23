@@ -27,6 +27,9 @@
     <FxCompile Include="Shaders\AtmosphereRaymarchingReferencePS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
+    <FxCompile Include="Shaders\AtmosphereMultiScatteringLutCS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Atmosphere.h" />

@@ -24,6 +24,9 @@
     <None Include="Shaders\SkyViewCommon.hlsli" />
   </ItemGroup>
   <ItemGroup>
+    <FxCompile Include="Shaders\AtmosphereMultiScatteringLutCS.hlsl">
+      <ShaderType>Compute</ShaderType>
+    </FxCompile>
     <FxCompile Include="Shaders\AtmosphereRaymarchingReferencePS.hlsl">
       <ShaderType>Pixel</ShaderType>
     </FxCompile>

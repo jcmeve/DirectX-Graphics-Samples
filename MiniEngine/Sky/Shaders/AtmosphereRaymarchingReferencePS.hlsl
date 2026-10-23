@@ -4,6 +4,7 @@
 static const int kSkySteps = 32;
 
 Texture2D<float4> TransmittanceLut : register(t0);
+Texture2D<float4> MultiScatteringLut : register(t1);
 SamplerState LinearClampSampler : register(s0);
 
 float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
@@ -45,9 +46,12 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
         float3 SunTransmittance = SampleTransmittance(TransmittanceLut, LinearClampSampler, r, SunMu) * PlanetShadow;
 
         //»ê¶õµÈ ºûÀÌ Ãß°¡µÊ
-        float3 InScattering = SunIlluminance * SunTransmittance
-            * (Coefficients.RayleighScattering * PhaseR + Coefficients.MieScattering * PhaseM);
-
+        float3 MultiScattering = SampleMultiScattering(MultiScatteringLut, LinearClampSampler, r, SunMu) * MultiScatteringFactor;
+        float3 InScattering = SunIlluminance * (
+              SunTransmittance * (Coefficients.RayleighScattering * PhaseR + Coefficients.MieScattering * PhaseM)
+            + MultiScattering * (Coefficients.RayleighScattering + Coefficients.MieScattering));
+        
+        
         // ÀûºÐ
         float3 StepTransmittance = exp(-Coefficients.TotalExtinction * StepSize);
         Luminance += Throughput * (InScattering - InScattering * StepTransmittance) / max(Coefficients.TotalExtinction, 1e-6);

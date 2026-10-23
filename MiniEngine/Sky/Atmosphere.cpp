@@ -15,6 +15,7 @@
 #include "CompiledShaders/SkyFullscreenVS.h"
 #include "CompiledShaders/SkyDebugViewPS.h"
 #include "CompiledShaders/SkyDebugViewVolumePS.h"
+#include "CompiledShaders/AtmosphereMultiScatteringLutCS.h"
 #include "CompiledShaders/AtmosphereRaymarchingReferencePS.h"
 
 using namespace Graphics;
@@ -55,7 +56,8 @@ namespace
         float SunDiskCosAngle;
 
         float SunDiskIntensity;         
-        float Pad[3];
+        float MultiScatteringFactor;
+        float Pad[2];
     };
 
     enum RootBindings
@@ -70,6 +72,8 @@ namespace
 
     const uint32_t kTransmittanceLutWidth = 256;
     const uint32_t kTransmittanceLutHeight = 64;
+    const uint32_t kMultiScatteringLutSize = 32;
+    const uint32_t kMultiScatteringDirectionCount = 64;
     const uint32_t kVolumeTestSize = 32;
     const uint32_t kDebugViewScale = 3;
     const uint32_t kDebugViewMargin = 16;
@@ -79,12 +83,14 @@ namespace
 
     RootSignature s_RootSig;
     ComputePSO s_TransmittanceLutPSO(L"Atmosphere: Transmittance LUT CS");
+    ComputePSO s_MultiScatteringLutPSO(L"Atmosphere: Multi Scattering LUT CS");
     ComputePSO s_VolumeTestPSO(L"Atmosphere: Volume Test CS");
     GraphicsPSO s_DebugViewPSO(L"Atmosphere: Debug View PSO");
     GraphicsPSO s_DebugViewVolumePSO(L"Atmosphere: Debug View Volume PSO");
     GraphicsPSO s_AtmosphereRaymarchingReferencePSO(L"Atmosphere: Raymarching PSO");
 
     ColorBuffer s_TransmittanceLut;
+    ColorBuffer s_MultiScatteringLut;
     VolumeBuffer s_VolumeTest;
 
     AtmosphereConstants s_Constants;
@@ -98,6 +104,10 @@ namespace
     NumVar s_CameraAltitudeKm("Graphics/Atmosphere/Camera Altitude Offset (km)", 0.0f, 0.0f, 300.0f, 5.0f);
     NumVar s_SunDiskIntensity("Graphics/Atmosphere/Sun Disk Intensity", 20.0f, 0.0f, 200.0f, 5.0f);
     NumVar s_VolumeTestSlice("Graphics/Atmosphere/Debug/Volume Slice", 0.5f, 0.0f, 1.0f, 0.05f);
+
+    BoolVar s_EnableMultiScattering("Graphics/Atmosphere/Enable Multi Scattering", true);
+    BoolVar s_ShowMultiScatteringLut("Graphics/Atmosphere/Debug/Show Multi Scattering LUT", false);
+    NumVar s_MultiScatteringDebugExposure("Graphics/Atmosphere/Debug/Multi Scattering Exposure", 20.0f, 1.0f, 200.0f, 5.0f);
 
     void SetFloat3(float(&Dest)[3], float X, float Y, float Z)
     {
@@ -175,6 +185,7 @@ void Atmosphere::Initialize(void)
     s_RootSig.Finalize(L"Atmosphere");
 
     InitializeComputePSO(s_TransmittanceLutPSO, g_pAtmosphereTransmittanceLutCS, sizeof(g_pAtmosphereTransmittanceLutCS));
+    InitializeComputePSO(s_MultiScatteringLutPSO, g_pAtmosphereMultiScatteringLutCS, sizeof(g_pAtmosphereMultiScatteringLutCS));
     InitializeComputePSO(s_VolumeTestPSO, g_pAtmosphereVolumeTestCS, sizeof(g_pAtmosphereVolumeTestCS));
     InitializeDebugViewPSO(s_DebugViewPSO, g_pSkyDebugViewPS, sizeof(g_pSkyDebugViewPS));
     InitializeDebugViewPSO(s_DebugViewVolumePSO, g_pSkyDebugViewVolumePS, sizeof(g_pSkyDebugViewVolumePS));
@@ -182,6 +193,8 @@ void Atmosphere::Initialize(void)
 
     s_TransmittanceLut.Create(L"Atmosphere Transmittance LUT",
         kTransmittanceLutWidth, kTransmittanceLutHeight, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
+    s_MultiScatteringLut.Create(L"Atmosphere Multi Scattering LUT",
+        kMultiScatteringLutSize, kMultiScatteringLutSize, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
     s_VolumeTest.Create(L"Atmosphere Volume Test",
         kVolumeTestSize, kVolumeTestSize, kVolumeTestSize, 1, DXGI_FORMAT_R8G8B8A8_UNORM);
 
@@ -193,6 +206,7 @@ void Atmosphere::Initialize(void)
 void Atmosphere::Shutdown(void)
 {
     s_TransmittanceLut.Destroy();
+    s_MultiScatteringLut.Destroy();
     s_VolumeTest.Destroy();
 }
 
@@ -209,13 +223,27 @@ void Atmosphere::Update(ComputeContext& Context)
 
     if (bUpdateTransmittance)
     {
-        ScopedTimer _prof2(L"Transmittance LUT", Context);
+        {
+            ScopedTimer _prof2(L"Transmittance LUT", Context);
 
-        Context.TransitionResource(s_TransmittanceLut, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
-        Context.SetPipelineState(s_TransmittanceLutPSO);
-        Context.SetDynamicDescriptor(kUAVs, 0, s_TransmittanceLut.GetUAV());
-        Context.Dispatch2D(kTransmittanceLutWidth, kTransmittanceLutHeight, 8, 8);
-        Context.TransitionResource(s_TransmittanceLut, kShaderResourceState);
+            Context.TransitionResource(s_TransmittanceLut, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+            Context.SetPipelineState(s_TransmittanceLutPSO);
+            Context.SetDynamicDescriptor(kUAVs, 0, s_TransmittanceLut.GetUAV());
+            Context.Dispatch2D(kTransmittanceLutWidth, kTransmittanceLutHeight, 8, 8);
+            Context.TransitionResource(s_TransmittanceLut, kShaderResourceState);
+        }
+
+        {
+            ScopedTimer _prof3(L"Multi Scattering LUT", Context);
+
+            Context.TransitionResource(s_MultiScatteringLut, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+            Context.SetPipelineState(s_MultiScatteringLutPSO);
+            Context.SetDynamicDescriptor(kSRVs, 0, s_TransmittanceLut.GetSRV());
+            Context.SetDynamicDescriptor(kUAVs, 0, s_MultiScatteringLut.GetUAV());
+            Context.Dispatch3D(kMultiScatteringLutSize, kMultiScatteringLutSize, kMultiScatteringDirectionCount,
+                1, 1, kMultiScatteringDirectionCount);
+            Context.TransitionResource(s_MultiScatteringLut, kShaderResourceState);
+        }
 
         s_bTransmittanceDirty = false;
     }
@@ -252,12 +280,14 @@ void Atmosphere::RenderSky(
     ViewConstants.SunDirection[2] = (float)SunDirection.GetZ();
     ViewConstants.SunDiskCosAngle = cosf(kSunDiskHalfAngleRadians);
     ViewConstants.SunDiskIntensity = s_SunDiskIntensity;
+    ViewConstants.MultiScatteringFactor = s_EnableMultiScattering ? 1.0f : 0.0f;
 
     Context.SetRootSignature(s_RootSig);
     Context.SetPipelineState(s_AtmosphereRaymarchingReferencePSO);
     Context.SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
     Context.TransitionResource(s_TransmittanceLut, kShaderResourceState);
+    Context.TransitionResource(s_MultiScatteringLut, kShaderResourceState);
     Context.TransitionResource(g_SceneDepthBuffer, D3D12_RESOURCE_STATE_DEPTH_READ);
     Context.TransitionResource(g_SceneColorBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, true);
     Context.SetRenderTarget(g_SceneColorBuffer.GetRTV(), g_SceneDepthBuffer.GetDSV_DepthReadOnly());
@@ -266,6 +296,7 @@ void Atmosphere::RenderSky(
     Context.SetDynamicConstantBufferView(kAtmosphereCBV, sizeof(s_Constants), &s_Constants);
     Context.SetDynamicConstantBufferView(kViewCBV, sizeof(ViewConstants), &ViewConstants);
     Context.SetDynamicDescriptor(kSRVs, 0, s_TransmittanceLut.GetSRV());
+    Context.SetDynamicDescriptor(kSRVs, 1, s_MultiScatteringLut.GetSRV());
     Context.Draw(3);
 }
 
@@ -276,7 +307,7 @@ bool Atmosphere::IsAtmosphereEnabled(void)
 
 void Atmosphere::RenderDebug(GraphicsContext& Context)
 {
-    if (!s_ShowTransmittanceLut && !s_ShowVolumeTest)
+    if (!s_ShowTransmittanceLut && !s_ShowMultiScatteringLut && !s_ShowVolumeTest)
         return;
 
     Context.SetRootSignature(s_RootSig);
@@ -296,6 +327,19 @@ void Atmosphere::RenderDebug(GraphicsContext& Context)
         Context.Draw(3);
 
         Top += kTransmittanceLutHeight * kDebugViewScale + kDebugViewMargin;
+    }
+
+    if (s_ShowMultiScatteringLut)
+    {
+        Context.TransitionResource(s_MultiScatteringLut, kShaderResourceState, true);
+        Context.SetPipelineState(s_DebugViewPSO);
+        Context.SetDynamicDescriptor(kSRVs, 0, s_MultiScatteringLut.GetSRV());
+        Context.SetConstants(kDebugConstants, (float)s_MultiScatteringDebugExposure, 0.0f);
+        Context.SetViewportAndScissor(kDebugViewMargin, Top,
+            kMultiScatteringLutSize * kDebugViewScale * 2, kMultiScatteringLutSize * kDebugViewScale * 2);
+        Context.Draw(3);
+
+        Top += kMultiScatteringLutSize * kDebugViewScale * 2 + kDebugViewMargin;
     }
 
     if (s_ShowVolumeTest)
