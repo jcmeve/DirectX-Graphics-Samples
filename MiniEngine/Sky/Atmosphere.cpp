@@ -147,7 +147,9 @@ namespace
         float CameraHeightKm = (float)CameraPos.GetY() * kWorldUnitsToKm + s_CameraAltitudeKm;
 
         SkyViewConstants ViewConstants = {};
-        ViewConstants.InvViewProj = Math::Invert(Camera.GetViewProjMatrix());
+        //카메라에서 이동을 제거하고 해야 정밀도 보장됨. 카메라 Translate를 그대로 두고 역행렬 계산하게 되면 부동소수점 오차가 발생해서 제대로 된 렌더링이 불가능
+        Math::Matrix4 ViewRotation(Camera.GetViewMatrix().Get3x3(), Math::Vector3(Math::kZero));
+        ViewConstants.InvViewProj = Math::Invert(Camera.GetProjMatrix() * ViewRotation);
         ViewConstants.CameraPositionKm[0] = (float)CameraPos.GetX() * kWorldUnitsToKm;
         ViewConstants.CameraPositionKm[1] = s_Constants.BottomRadius + Math::Max(CameraHeightKm, 0.01f);
         ViewConstants.CameraPositionKm[2] = (float)CameraPos.GetZ() * kWorldUnitsToKm;

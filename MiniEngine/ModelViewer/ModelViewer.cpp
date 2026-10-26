@@ -161,14 +161,39 @@ void ModelViewer::Startup( void )
     LoadIBLTextures();
 
     std::wstring gltfFileName;
+    std::wstring terrainFileName;
 
     bool forceRebuild = false;
     uint32_t rebuildValue;
     if (CommandLineArgs::GetInteger(L"rebuild", rebuildValue))
         forceRebuild = rebuildValue != 0;
 
-    if (CommandLineArgs::GetString(L"model", gltfFileName) == false)
+    if (CommandLineArgs::GetString(L"model", gltfFileName))
     {
+        m_ModelInst = Renderer::LoadModel(gltfFileName, forceRebuild);
+        m_ModelInst.LoopAllAnimations();
+        m_ModelInst.Resize(10.0f);
+
+        MotionBlur::Enable = false;
+    }
+    else if (CommandLineArgs::GetString(L"terrain", terrainFileName))
+    {
+
+        m_ModelInst = Renderer::LoadModel(terrainFileName, forceRebuild);
+        m_ModelInst.Resize(1000000.0f * m_ModelInst.GetRadius());
+        MotionBlur::Enable = false;
+
+        OrientedBox obb = m_ModelInst.GetBoundingBox();
+        Vector3 TerrainCenter = obb.GetCenter();
+        Vector3 TerrainExtent = obb.GetDimensions();
+        Utility::Printf("Terrain extent (km): %.2f x %.2f x %.2f\n",
+            (float)TerrainExtent.GetX() * 1.0e-5f, (float)TerrainExtent.GetY() * 1.0e-5f, (float)TerrainExtent.GetZ() * 1.0e-5f);
+
+        Vector3 Eye = TerrainCenter + Vector3(0.0f,
+            (float)TerrainExtent.GetY() * 0.5f + 200.0f, -(float)TerrainExtent.GetZ() * 0.4f);
+        m_Camera.SetEyeAtUp(Eye, TerrainCenter, Vector3(kYUnitVector));
+    }
+    else {
 #ifdef LEGACY_RENDERER
         Sponza::Startup(m_Camera);
 #else
@@ -177,25 +202,27 @@ void ModelViewer::Startup( void )
         OrientedBox obb = m_ModelInst.GetBoundingBox();
         float modelRadius = Length(obb.GetDimensions()) * 0.5f;
         Vector3 ModelExtent = obb.GetDimensions();
-        Utility::Printf("123123 %.1f %.1f %.1f", (float)ModelExtent.GetX(), (float)ModelExtent.GetY(), (float)ModelExtent.GetZ());
+
+
+
         const Vector3 eye = obb.GetCenter() + Vector3(modelRadius * 0.5f, 0.0f, 0.0f);
-        m_Camera.SetEyeAtUp( eye, Vector3(kZero), Vector3(kYUnitVector) );
+        m_Camera.SetEyeAtUp(eye, Vector3(kZero), Vector3(kYUnitVector));
 #endif
+    }
+
+    if (gltfFileName.size() == 0)
+    {
+        m_Camera.SetZRange(1.0f, 5000000.0f);
+
+        FlyingFPSCamera* FlyingCamera = new FlyingFPSCamera(m_Camera, Vector3(kYUnitVector));
+        FlyingCamera->SetMoveSpeed(200000.0f, 200000.0f);
+        m_CameraController.reset(FlyingCamera);
     }
     else
     {
-        m_ModelInst = Renderer::LoadModel(gltfFileName, forceRebuild);
-        m_ModelInst.LoopAllAnimations();
-        m_ModelInst.Resize(10.0f);
-
-        MotionBlur::Enable = false;
-    }
-
-    m_Camera.SetZRange(1.0f, 10000.0f);
-    if (gltfFileName.size() == 0)
-        m_CameraController.reset(new FlyingFPSCamera(m_Camera, Vector3(kYUnitVector)));
-    else
+        m_Camera.SetZRange(1.0f, 10000.0f);
         m_CameraController.reset(new OrbitCamera(m_Camera, m_ModelInst.GetBoundingSphere(), Vector3(kYUnitVector)));
+    }
 }
 
 void ModelViewer::Cleanup( void )
