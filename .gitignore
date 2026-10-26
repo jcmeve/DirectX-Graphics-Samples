@@ -30,5 +30,10 @@ Samples/Desktop/D3D12HelloWorld/src/HelloVAEncode/*.h264
 
 /Samples/Desktop/**/x64
 
+/ModelViewer/LandScape/death_valley_tarrain/textures/*.dds
+**/*.mini
 # vcpkg manifest-mode install tree
 vcpkg_installed/
+/MiniEngine/ModelViewer/LandScape/death_valley_-_terrain/textures/material_0_baseColor.dds
+/MiniEngine/ModelViewer/LandScape/death_valley_-_terrain/textures/material_0_metallicRoughness.dds
+/MiniEngine/ModelViewer/LandScape/death_valley_-_terrain/textures/material_0_normal.dds
