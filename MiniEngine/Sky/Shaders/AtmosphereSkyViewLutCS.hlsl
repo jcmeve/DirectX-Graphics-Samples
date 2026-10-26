@@ -41,6 +41,6 @@ void main(uint3 DTid : SV_DispatchThreadID)
 
     float3 Throughput;
     float3 Luminance = IntegrateScatteredLuminance(TransmittanceLut, MultiScatteringLut, LinearClampSampler,
-        Origin, LocalDir, LocalSunDir, SunIlluminance, MultiScatteringFactor, kSkyViewLutSteps, Throughput);
+        Origin, LocalDir, LocalSunDir, SunIlluminance, MultiScatteringFactor, kSkyViewLutSteps, kInfiniteDistance, false, Throughput);
     SkyViewLut[DTid.xy] = float4(Luminance, 1.0);
 }

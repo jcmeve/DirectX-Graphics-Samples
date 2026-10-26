@@ -12,9 +12,6 @@
     <FxCompile Include="Shaders\AtmosphereTransmittanceLutCS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
-    <FxCompile Include="Shaders\AtmosphereVolumeTestCS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
     <FxCompile Include="Shaders\SkyFullscreenVS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
@@ -34,6 +31,12 @@
       <Filter>Shaders</Filter>
     </FxCompile>
     <FxCompile Include="Shaders\AtmosphereSkyViewPS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\AtmosphereAerialPerspectiveCS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\AtmosphereAerialPerspectivePS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
   </ItemGroup>

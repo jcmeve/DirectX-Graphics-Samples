@@ -24,6 +24,12 @@
     <None Include="Shaders\SkyViewCommon.hlsli" />
   </ItemGroup>
   <ItemGroup>
+    <FxCompile Include="Shaders\AtmosphereAerialPerspectiveCS.hlsl">
+      <ShaderType>Compute</ShaderType>
+    </FxCompile>
+    <FxCompile Include="Shaders\AtmosphereAerialPerspectivePS.hlsl">
+      <ShaderType>Pixel</ShaderType>
+    </FxCompile>
     <FxCompile Include="Shaders\AtmosphereMultiScatteringLutCS.hlsl">
       <ShaderType>Compute</ShaderType>
     </FxCompile>
@@ -37,9 +43,6 @@
       <ShaderType>Pixel</ShaderType>
     </FxCompile>
     <FxCompile Include="Shaders\AtmosphereTransmittanceLutCS.hlsl">
-      <ShaderType>Compute</ShaderType>
-    </FxCompile>
-    <FxCompile Include="Shaders\AtmosphereVolumeTestCS.hlsl">
       <ShaderType>Compute</ShaderType>
     </FxCompile>
     <FxCompile Include="Shaders\SkyDebugViewPS.hlsl">

@@ -23,7 +23,7 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
 
     float3 Throughput;
     float3 Ret = IntegrateScatteredLuminance(TransmittanceLut, MultiScatteringLut, LinearClampSampler,
-        Origin, Dir, SunDirection, SunIlluminance, MultiScatteringFactor, kSkySteps, Throughput);
+        Origin, Dir, SunDirection, SunIlluminance, MultiScatteringFactor, kSkySteps, kInfiniteDistance, false, Throughput);
 
     bool bIntersectGround = RaySphereNear(Origin, Dir, BottomRadius) > 0.0;
     if (!bIntersectGround && CosTheta > SunDiskCosAngle)

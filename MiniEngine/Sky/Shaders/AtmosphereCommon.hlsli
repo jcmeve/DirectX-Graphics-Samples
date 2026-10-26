@@ -5,6 +5,9 @@ static const float kPi = 3.14159265;
 static const float kIsotropicPhase = 1.0 / (4.0 * kPi);
 static const float kMultiScatteringLutSize = 32.0;
 static const float2 kSkyViewLutSize = float2(192.0, 108.0); //1920*1080
+static const float kAerialPerspectiveSliceCount = 32.0;
+static const float kAerialPerspectiveMaxDistanceKm = 128.0;
+static const float kInfiniteDistance = 1.0e9;
 
 cbuffer AtmosphereConstants : register(b0)
 {
@@ -52,6 +55,12 @@ OpticalCoefficients GetOpticalCoefficients(float h)
         + OzoneExtinction * OzoneDensity;
     return Coefficients;
 }
+
+float GetSunVisibility(float3 Pos)
+{
+    return 1.0f;
+}
+
 
 // 레이와 구의 교차지점까지의 거리 중 먼 것
 float RaySphereFar(float3 Origin, float3 Dir, float Radius)
@@ -158,7 +167,8 @@ float3 SampleMultiScattering(Texture2D<float4> Lut, SamplerState LinearClamp, fl
 
 float3 IntegrateScatteredLuminance(Texture2D<float4> TransmittanceLut, Texture2D<float4> MultiScatteringLut,
     SamplerState LinearClamp, float3 Origin, float3 Dir, float3 SunDir,
-    float SunIlluminance, float MultiScatteringFactor, int StepCount, out float3 Throughput)
+    float SunIlluminance, float MultiScatteringFactor, int StepCount,
+    float MaxDistance, bool bUseSunVisibility, out float3 Throughput)
 {
     Throughput = 1.0;
 
@@ -168,7 +178,8 @@ float3 IntegrateScatteredLuminance(Texture2D<float4> TransmittanceLut, Texture2D
 
     float GroundDistance = RaySphereNear(Origin, Dir, BottomRadius);
     float RayLength = (GroundDistance > 0.0) ? GroundDistance : TopDistance;
-
+    RayLength = min(RayLength, MaxDistance);
+    
     float CosTheta = dot(Dir, SunDir);
     float PhaseR = RayleighPhase(CosTheta);
     float PhaseM = MiePhase(CosTheta, MiePhaseG);
@@ -182,16 +193,19 @@ float3 IntegrateScatteredLuminance(Texture2D<float4> TransmittanceLut, Texture2D
         float r = length(SamplePos);
         OpticalCoefficients Coefficients = GetOpticalCoefficients(r - BottomRadius);
 
-        float SunMu = dot(SamplePos / r, SunDir);
-        float PlanetShadow = (RaySphereNear(SamplePos, SunDir, BottomRadius) > 0.0) ? 0.0 : 1.0;
+        float SunMu = dot(SamplePos / r, SunDir);//천정각
+        float PlanetShadow = (RaySphereNear(SamplePos, SunDir, BottomRadius) > 0.0) ? 0.0 : 1.0;//행성과 닿은 경우 태양 가시성 0
         float3 SunTransmittance = SampleTransmittance(TransmittanceLut, LinearClamp, r, SunMu) * PlanetShadow;
-
+        if (bUseSunVisibility)
+            SunTransmittance *= GetSunVisibility(SamplePos);
+        
         float3 MultiScattering = SampleMultiScattering(MultiScatteringLut, LinearClamp, r, SunMu) * MultiScatteringFactor;
+        
         float3 InScattering = SunIlluminance * (
               SunTransmittance * (Coefficients.RayleighScattering * PhaseR + Coefficients.MieScattering * PhaseM)
-            + MultiScattering * (Coefficients.RayleighScattering + Coefficients.MieScattering));
+            + MultiScattering * (Coefficients.RayleighScattering + Coefficients.MieScattering));//
 
-        float3 StepTransmittance = exp(-Coefficients.TotalExtinction * StepSize);
+        float3 StepTransmittance = exp(-Coefficients.TotalExtinction * StepSize);//구간 투과율
         Luminance += Throughput * (InScattering - InScattering * StepTransmittance) / max(Coefficients.TotalExtinction, 1e-6);
         Throughput *= StepTransmittance;
     }

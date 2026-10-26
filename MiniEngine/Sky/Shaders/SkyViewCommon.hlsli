@@ -13,7 +13,8 @@ cbuffer SkyViewConstants : register(b2)
     
     float SunDiskIntensity;
     float MultiScatteringFactor;
-    float2 SkyViewConstantsPad;
+    float AerialPerspectiveWorldToKm;
+    float SkyViewConstantsPad;
 };
 
 

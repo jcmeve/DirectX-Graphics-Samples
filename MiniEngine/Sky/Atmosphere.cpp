@@ -11,7 +11,6 @@
 #include "Camera.h"
 
 #include "CompiledShaders/AtmosphereTransmittanceLutCS.h"
-#include "CompiledShaders/AtmosphereVolumeTestCS.h"
 #include "CompiledShaders/SkyFullscreenVS.h"
 #include "CompiledShaders/SkyDebugViewPS.h"
 #include "CompiledShaders/SkyDebugViewVolumePS.h"
@@ -19,6 +18,8 @@
 #include "CompiledShaders/AtmosphereRaymarchingReferencePS.h"
 #include "CompiledShaders/AtmosphereSkyViewLutCS.h"
 #include "CompiledShaders/AtmosphereSkyViewPS.h"
+#include "CompiledShaders/AtmosphereAerialPerspectiveCS.h"
+#include "CompiledShaders/AtmosphereAerialPerspectivePS.h"
 
 using namespace Graphics;
 
@@ -59,7 +60,8 @@ namespace
 
         float SunDiskIntensity;         
         float MultiScatteringFactor;
-        float Pad[2];
+        float AerialPerspectiveWorldToKm;
+        float Pad;
     };
 
     enum RootBindings
@@ -81,7 +83,8 @@ namespace
     const uint32_t kVolumeTestSize = 32;
     const uint32_t kDebugViewScale = 3;
     const uint32_t kDebugViewMargin = 16;
-    
+    const uint32_t kAerialPerspectiveSize = 32;
+
     enum SkyMode
     {
         kSkyModeReference,
@@ -98,17 +101,19 @@ namespace
     RootSignature s_RootSig;
     ComputePSO s_TransmittanceLutPSO(L"Atmosphere: Transmittance LUT CS");
     ComputePSO s_MultiScatteringLutPSO(L"Atmosphere: Multi Scattering LUT CS");
-    ComputePSO s_VolumeTestPSO(L"Atmosphere: Volume Test CS");
     GraphicsPSO s_DebugViewPSO(L"Atmosphere: Debug View PSO");
     GraphicsPSO s_DebugViewVolumePSO(L"Atmosphere: Debug View Volume PSO");
     GraphicsPSO s_AtmosphereRaymarchingReferencePSO(L"Atmosphere: Raymarching PSO");
     ComputePSO s_SkyViewLutPSO(L"Atmosphere: Sky View LUT CS");
     GraphicsPSO s_SkyViewCompositePSO(L"Atmosphere: Sky View Composite PSO");
+    ComputePSO s_AerialPerspectivePSO(L"Atmosphere: Aerial Perspective CS");
+    GraphicsPSO s_ApplyAerialPerspectivePSO(L"Atmosphere: Apply Aerial Perspective PSO");
+
 
     ColorBuffer s_TransmittanceLut;
     ColorBuffer s_MultiScatteringLut;
     ColorBuffer s_SkyViewLut;
-    VolumeBuffer s_VolumeTest;
+    VolumeBuffer s_AerialPerspectiveVolume;
 
     AtmosphereConstants s_Constants;
     bool s_bTransmittanceDirty = true;
@@ -116,11 +121,9 @@ namespace
 
     BoolVar s_ForceUpdateLuts("Graphics/Atmosphere/Force Update LUTs", false);
     BoolVar s_ShowTransmittanceLut("Graphics/Atmosphere/Debug/Show Transmittance LUT", false);
-    BoolVar s_ShowVolumeTest("Graphics/Atmosphere/Debug/Show Volume Test", false);
     BoolVar s_EnableAtmosphere("Graphics/Atmosphere/Enable Atmosphere", true);
     NumVar s_CameraAltitudeKm("Graphics/Atmosphere/Camera Altitude Offset (km)", 0.0f, 0.0f, 300.0f, 5.0f);
     NumVar s_SunDiskIntensity("Graphics/Atmosphere/Sun Disk Intensity", 20.0f, 0.0f, 200.0f, 5.0f);
-    NumVar s_VolumeTestSlice("Graphics/Atmosphere/Debug/Volume Slice", 0.5f, 0.0f, 1.0f, 0.05f);
 
     BoolVar s_EnableMultiScattering("Graphics/Atmosphere/Enable Multi Scattering", true);
     BoolVar s_ShowMultiScatteringLut("Graphics/Atmosphere/Debug/Show Multi Scattering LUT", false);
@@ -129,6 +132,14 @@ namespace
     EnumVar s_SkyMode("Graphics/Atmosphere/Sky Mode", kSkyModeSkyViewLut, _countof(kSkyModeLabels), kSkyModeLabels);
     BoolVar s_ShowSkyViewLut("Graphics/Atmosphere/Debug/Show Sky View LUT", false);
     NumVar s_SkyViewDebugExposure("Graphics/Atmosphere/Debug/Sky View Exposure", 2.0f, 0.1f, 50.0f, 0.5f);
+
+#pragma region AerialPerspective
+    BoolVar s_EnableAerialPerspective("Graphics/Atmosphere/Enable Aerial Perspective", true);
+    NumVar s_AerialPerspectiveDistanceScale("Graphics/Atmosphere/Debug/Aerial Perspective Distance Scale", 1.0f, 1.0f, 2000.0f, 50.0f);
+    BoolVar s_ShowAerialPerspective("Graphics/Atmosphere/Debug/Show Aerial Perspective", false);
+    NumVar s_AerialPerspectiveDebugSlice("Graphics/Atmosphere/Debug/Aerial Perspective Slice", 0.5f, 0.0f, 1.0f, 0.05f);
+    NumVar s_AerialPerspectiveDebugExposure("Graphics/Atmosphere/Debug/Aerial Perspective Exposure", 10.0f, 1.0f, 200.0f, 5.0f);
+#pragma endregion
 
     SkyViewConstants BuildViewConstants(const Math::Camera& Camera, const Math::Vector3& SunDirection, float SunIlluminance)
     {
@@ -147,6 +158,7 @@ namespace
         ViewConstants.SunDiskCosAngle = cosf(kSunDiskHalfAngleRadians);
         ViewConstants.SunDiskIntensity = s_SunDiskIntensity;
         ViewConstants.MultiScatteringFactor = s_EnableMultiScattering ? 1.0f : 0.0f;
+        ViewConstants.AerialPerspectiveWorldToKm = kWorldUnitsToKm * s_AerialPerspectiveDistanceScale;
         return ViewConstants;
     }
 
@@ -225,18 +237,29 @@ void Atmosphere::Initialize(void)
     s_RootSig[kAtmosphereCBV].InitAsConstantBuffer(0);
     s_RootSig[kDebugConstants].InitAsConstants(1, 4);
     s_RootSig[kViewCBV].InitAsConstantBuffer(2);
-    s_RootSig[kSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 4);
+    s_RootSig[kSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 8);
     s_RootSig[kUAVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 0, 4);
     s_RootSig.Finalize(L"Atmosphere");
 
     InitializeComputePSO(s_TransmittanceLutPSO, g_pAtmosphereTransmittanceLutCS, sizeof(g_pAtmosphereTransmittanceLutCS));
     InitializeComputePSO(s_MultiScatteringLutPSO, g_pAtmosphereMultiScatteringLutCS, sizeof(g_pAtmosphereMultiScatteringLutCS));
-    InitializeComputePSO(s_VolumeTestPSO, g_pAtmosphereVolumeTestCS, sizeof(g_pAtmosphereVolumeTestCS));
     InitializeDebugViewPSO(s_DebugViewPSO, g_pSkyDebugViewPS, sizeof(g_pSkyDebugViewPS));
     InitializeDebugViewPSO(s_DebugViewVolumePSO, g_pSkyDebugViewVolumePS, sizeof(g_pSkyDebugViewVolumePS));
     InitializeSkyPSO(s_AtmosphereRaymarchingReferencePSO, g_pAtmosphereRaymarchingReferencePS, sizeof(g_pAtmosphereRaymarchingReferencePS));
     InitializeComputePSO(s_SkyViewLutPSO, g_pAtmosphereSkyViewLutCS, sizeof(g_pAtmosphereSkyViewLutCS));
     InitializeSkyPSO(s_SkyViewCompositePSO, g_pAtmosphereSkyViewPS, sizeof(g_pAtmosphereSkyViewPS));
+    InitializeComputePSO(s_AerialPerspectivePSO, g_pAtmosphereAerialPerspectiveCS, sizeof(g_pAtmosphereAerialPerspectiveCS));
+
+    s_ApplyAerialPerspectivePSO.SetRootSignature(s_RootSig);
+    s_ApplyAerialPerspectivePSO.SetRasterizerState(RasterizerTwoSided);
+    s_ApplyAerialPerspectivePSO.SetBlendState(BlendPreMultiplied);
+    s_ApplyAerialPerspectivePSO.SetDepthStencilState(DepthStateDisabled);
+    s_ApplyAerialPerspectivePSO.SetInputLayout(0, nullptr);
+    s_ApplyAerialPerspectivePSO.SetPrimitiveTopologyType(D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE);
+    s_ApplyAerialPerspectivePSO.SetRenderTargetFormat(g_SceneColorBuffer.GetFormat(), DXGI_FORMAT_UNKNOWN);
+    s_ApplyAerialPerspectivePSO.SetVertexShader(g_pSkyFullscreenVS, sizeof(g_pSkyFullscreenVS));
+    s_ApplyAerialPerspectivePSO.SetPixelShader(g_pAtmosphereAerialPerspectivePS, sizeof(g_pAtmosphereAerialPerspectivePS));
+    s_ApplyAerialPerspectivePSO.Finalize();
 
     s_TransmittanceLut.Create(L"Atmosphere Transmittance LUT",
         kTransmittanceLutWidth, kTransmittanceLutHeight, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
@@ -244,9 +267,9 @@ void Atmosphere::Initialize(void)
         kMultiScatteringLutSize, kMultiScatteringLutSize, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
     s_SkyViewLut.Create(L"Atmosphere Sky View LUT",
         kSkyViewLutWidth, kSkyViewLutHeight, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
-    s_VolumeTest.Create(L"Atmosphere Volume Test",
-        kVolumeTestSize, kVolumeTestSize, kVolumeTestSize, 1, DXGI_FORMAT_R8G8B8A8_UNORM);
-
+    s_AerialPerspectiveVolume.Create(L"Atmosphere Aerial Perspective",
+        kAerialPerspectiveSize, kAerialPerspectiveSize, kAerialPerspectiveSize, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
+    
     SetDefaultConstants();
     s_bTransmittanceDirty = true;
     s_bVolumeTestDirty = true;
@@ -257,7 +280,7 @@ void Atmosphere::Shutdown(void)
     s_TransmittanceLut.Destroy();
     s_MultiScatteringLut.Destroy();
     s_SkyViewLut.Destroy();
-    s_VolumeTest.Destroy();
+    s_AerialPerspectiveVolume.Destroy();
 }
 
 void Atmosphere::Update(ComputeContext& Context)
@@ -300,12 +323,6 @@ void Atmosphere::Update(ComputeContext& Context)
 
     if (s_bVolumeTestDirty)
     {
-        Context.TransitionResource(s_VolumeTest, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
-        Context.SetPipelineState(s_VolumeTestPSO);
-        Context.SetDynamicDescriptor(kUAVs, 0, s_VolumeTest.GetUAV());
-        Context.Dispatch3D(kVolumeTestSize, kVolumeTestSize, kVolumeTestSize, 4, 4, 4);
-        Context.TransitionResource(s_VolumeTest, kShaderResourceState);
-
         s_bVolumeTestDirty = false;
     }
 }
@@ -343,6 +360,47 @@ void Atmosphere::RenderSky(
         Compute.TransitionResource(s_SkyViewLut, kShaderResourceState);
     }
 
+    if (s_EnableAerialPerspective)
+    {
+        ScopedTimer _prof4(L"Aerial Perspective", Context);
+
+        {
+            ComputeContext& Compute = Context.GetComputeContext();
+            Compute.SetRootSignature(s_RootSig);
+            Compute.SetPipelineState(s_AerialPerspectivePSO);
+
+            Compute.TransitionResource(s_TransmittanceLut, kShaderResourceState);
+            Compute.TransitionResource(s_MultiScatteringLut, kShaderResourceState);
+            Compute.TransitionResource(s_AerialPerspectiveVolume, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+
+            Compute.SetDynamicConstantBufferView(kAtmosphereCBV, sizeof(s_Constants), &s_Constants);
+            Compute.SetDynamicConstantBufferView(kViewCBV, sizeof(ViewConstants), &ViewConstants);
+            Compute.SetDynamicDescriptor(kSRVs, 0, s_TransmittanceLut.GetSRV());
+            Compute.SetDynamicDescriptor(kSRVs, 1, s_MultiScatteringLut.GetSRV());
+            Compute.SetDynamicDescriptor(kUAVs, 0, s_AerialPerspectiveVolume.GetUAV());
+            Compute.Dispatch3D(kAerialPerspectiveSize, kAerialPerspectiveSize, kAerialPerspectiveSize, 8, 8, 1);
+
+            Compute.TransitionResource(s_AerialPerspectiveVolume, kShaderResourceState);
+        }
+
+        Context.SetRootSignature(s_RootSig);
+        Context.SetPipelineState(s_ApplyAerialPerspectivePSO);
+        Context.SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+        Context.TransitionResource(s_AerialPerspectiveVolume, kShaderResourceState);
+        Context.TransitionResource(g_SceneDepthBuffer, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        Context.TransitionResource(g_SceneColorBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, true);
+        Context.SetRenderTarget(g_SceneColorBuffer.GetRTV());
+        Context.SetViewportAndScissor(Viewport, Scissor);
+
+        Context.SetDynamicConstantBufferView(kAtmosphereCBV, sizeof(s_Constants), &s_Constants);
+        Context.SetDynamicConstantBufferView(kViewCBV, sizeof(ViewConstants), &ViewConstants);
+        Context.SetDynamicDescriptor(kSRVs, 3, s_AerialPerspectiveVolume.GetSRV());
+        Context.SetDynamicDescriptor(kSRVs, 4, g_SceneDepthBuffer.GetDepthSRV());
+        Context.Draw(3);
+    }
+
+
     {
         ScopedTimer _prof3(L"Sky Composite", Context);
 
@@ -376,7 +434,7 @@ bool Atmosphere::IsAtmosphereEnabled(void)
 
 void Atmosphere::RenderDebug(GraphicsContext& Context)
 {
-    if (!s_ShowTransmittanceLut && !s_ShowMultiScatteringLut && !s_ShowSkyViewLut && !s_ShowVolumeTest)
+    if (!s_ShowTransmittanceLut && !s_ShowMultiScatteringLut && !s_ShowSkyViewLut && !s_ShowAerialPerspective)
         return;
 
     Context.SetRootSignature(s_RootSig);
@@ -421,14 +479,17 @@ void Atmosphere::RenderDebug(GraphicsContext& Context)
 
         Top += kSkyViewLutHeight * 2 + kDebugViewMargin;
     }
-    if (s_ShowVolumeTest)
+
+    if (s_ShowAerialPerspective)
     {
-        Context.TransitionResource(s_VolumeTest, kShaderResourceState, true);
+        Context.TransitionResource(s_AerialPerspectiveVolume, kShaderResourceState, true);
         Context.SetPipelineState(s_DebugViewVolumePSO);
-        Context.SetDynamicDescriptor(kSRVs, 0, s_VolumeTest.GetSRV());
-        Context.SetConstants(kDebugConstants, 1.0f, (float)s_VolumeTestSlice);
-        Context.SetViewportAndScissor(kDebugViewMargin, Top,
-            kVolumeTestSize * kDebugViewScale * 2, kVolumeTestSize * kDebugViewScale * 2);
+        Context.SetDynamicDescriptor(kSRVs, 0, s_AerialPerspectiveVolume.GetSRV());
+        Context.SetConstants(kDebugConstants, (float)s_AerialPerspectiveDebugExposure, (float)s_AerialPerspectiveDebugSlice);
+        Context.SetViewportAndScissor(kDebugViewMargin, Top, kAerialPerspectiveSize * 8, kAerialPerspectiveSize * 8);
         Context.Draw(3);
+
+        Top += kAerialPerspectiveSize * 8 + kDebugViewMargin;
     }
+
 }
