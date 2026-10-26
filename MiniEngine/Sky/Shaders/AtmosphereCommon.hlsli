@@ -4,6 +4,7 @@
 static const float kPi = 3.14159265;
 static const float kIsotropicPhase = 1.0 / (4.0 * kPi);
 static const float kMultiScatteringLutSize = 32.0;
+static const float2 kSkyViewLutSize = float2(192.0, 108.0); //1920*1080
 
 cbuffer AtmosphereConstants : register(b0)
 {
@@ -154,5 +155,100 @@ float3 SampleMultiScattering(Texture2D<float4> Lut, SamplerState LinearClamp, fl
     UV = float2(UnitToSubUv(UV.x, kMultiScatteringLutSize), UnitToSubUv(UV.y, kMultiScatteringLutSize));
     return Lut.SampleLevel(LinearClamp, UV, 0).rgb;
 }
+
+float3 IntegrateScatteredLuminance(Texture2D<float4> TransmittanceLut, Texture2D<float4> MultiScatteringLut,
+    SamplerState LinearClamp, float3 Origin, float3 Dir, float3 SunDir,
+    float SunIlluminance, float MultiScatteringFactor, int StepCount, out float3 Throughput)
+{
+    Throughput = 1.0;
+
+    float TopDistance = RaySphereFar(Origin, Dir, TopRadius);
+    if (TopDistance <= 0.0)
+        return 0.0;
+
+    float GroundDistance = RaySphereNear(Origin, Dir, BottomRadius);
+    float RayLength = (GroundDistance > 0.0) ? GroundDistance : TopDistance;
+
+    float CosTheta = dot(Dir, SunDir);
+    float PhaseR = RayleighPhase(CosTheta);
+    float PhaseM = MiePhase(CosTheta, MiePhaseG);
+
+    float StepSize = RayLength / StepCount;
+    float3 Luminance = 0.0;
+
+    for (int i = 0; i < StepCount; ++i)
+    {
+        float3 SamplePos = Origin + Dir * ((i + 0.5) * StepSize);
+        float r = length(SamplePos);
+        OpticalCoefficients Coefficients = GetOpticalCoefficients(r - BottomRadius);
+
+        float SunMu = dot(SamplePos / r, SunDir);
+        float PlanetShadow = (RaySphereNear(SamplePos, SunDir, BottomRadius) > 0.0) ? 0.0 : 1.0;
+        float3 SunTransmittance = SampleTransmittance(TransmittanceLut, LinearClamp, r, SunMu) * PlanetShadow;
+
+        float3 MultiScattering = SampleMultiScattering(MultiScatteringLut, LinearClamp, r, SunMu) * MultiScatteringFactor;
+        float3 InScattering = SunIlluminance * (
+              SunTransmittance * (Coefficients.RayleighScattering * PhaseR + Coefficients.MieScattering * PhaseM)
+            + MultiScattering * (Coefficients.RayleighScattering + Coefficients.MieScattering));
+
+        float3 StepTransmittance = exp(-Coefficients.TotalExtinction * StepSize);
+        Luminance += Throughput * (InScattering - InScattering * StepTransmittance) / max(Coefficients.TotalExtinction, 1e-6);
+        Throughput *= StepTransmittance;
+    }
+
+    return Luminance;
+}
+
+//UV->Cos천정각,Cos태양죄우각
+void UvToSkyViewParams(float2 UV, float ViewHeight, out float ViewZenithCos, out float LightViewCos)
+{
+    UV = float2(SubUvToUnit(UV.x, kSkyViewLutSize.x), SubUvToUnit(UV.y, kSkyViewLutSize.y));
+
+    float HorizonDistance = sqrt(max(0.0, ViewHeight * ViewHeight - BottomRadius * BottomRadius));
+    float Beta = acos(saturate(HorizonDistance / ViewHeight)); // 지평선에서 발 아래까지의 각도
+    float ZenithHorizonAngle = kPi - Beta; // 천정각
+
+    if (UV.y < 0.5)
+    {
+        float Coord = 1.0 - 2.0 * UV.y;
+        Coord = 1.0 - Coord * Coord;
+        ViewZenithCos = cos(ZenithHorizonAngle * Coord);
+    }
+    else
+    {
+        float Coord = UV.y * 2.0 - 1.0;
+        ViewZenithCos = cos(ZenithHorizonAngle + Beta * Coord * Coord);
+    }
+
+    float CoordX = UV.x * UV.x;
+    LightViewCos = -(CoordX * 2.0 - 1.0);
+}
+
+// 위 함수의 역 천정각+태양각도->UV
+float2 SkyViewParamsToUv(bool bIntersectGround, float ViewZenithCos, float LightViewCos, float ViewHeight)
+{
+    float HorizonDistance = sqrt(max(0.0, ViewHeight * ViewHeight - BottomRadius * BottomRadius));
+    float Beta = acos(saturate(HorizonDistance / ViewHeight));
+    float ZenithHorizonAngle = kPi - Beta;
+    float ViewZenithAngle = acos(clamp(ViewZenithCos, -1.0, 1.0));
+
+    float2 UV;
+    if (!bIntersectGround)
+    {
+        float Coord = 1.0 - saturate(ViewZenithAngle / ZenithHorizonAngle);
+        UV.y = (1.0 - sqrt(Coord)) * 0.5;
+    }
+    else
+    {
+        float Coord = saturate((ViewZenithAngle - ZenithHorizonAngle) / Beta);
+        UV.y = sqrt(Coord) * 0.5 + 0.5;
+    }
+
+    UV.x = sqrt(saturate(-LightViewCos * 0.5 + 0.5));
+
+    return float2(UnitToSubUv(UV.x, kSkyViewLutSize.x), UnitToSubUv(UV.y, kSkyViewLutSize.y));
+}
+
+
 
 #endif

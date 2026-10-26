@@ -30,6 +30,12 @@
     <FxCompile Include="Shaders\AtmosphereMultiScatteringLutCS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
+    <FxCompile Include="Shaders\AtmosphereSkyViewLutCS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\AtmosphereSkyViewPS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Atmosphere.h" />

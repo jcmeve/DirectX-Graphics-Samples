@@ -17,6 +17,8 @@
 #include "CompiledShaders/SkyDebugViewVolumePS.h"
 #include "CompiledShaders/AtmosphereMultiScatteringLutCS.h"
 #include "CompiledShaders/AtmosphereRaymarchingReferencePS.h"
+#include "CompiledShaders/AtmosphereSkyViewLutCS.h"
+#include "CompiledShaders/AtmosphereSkyViewPS.h"
 
 using namespace Graphics;
 
@@ -74,12 +76,24 @@ namespace
     const uint32_t kTransmittanceLutHeight = 64;
     const uint32_t kMultiScatteringLutSize = 32;
     const uint32_t kMultiScatteringDirectionCount = 64;
+    const uint32_t kSkyViewLutWidth = 192;
+    const uint32_t kSkyViewLutHeight = 108;
     const uint32_t kVolumeTestSize = 32;
     const uint32_t kDebugViewScale = 3;
     const uint32_t kDebugViewMargin = 16;
+    
+    enum SkyMode
+    {
+        kSkyModeReference,
+        kSkyModeSkyViewLut,
+    };
+    const char* kSkyModeLabels[] = { "Reference", "Sky View LUT" };
+    
     const D3D12_RESOURCE_STATES kShaderResourceState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
     const float kWorldUnitsToKm = 1.0f / 100000.0f; //cm to km
     const float kSunDiskHalfAngleRadians = 0.5f * 0.53f * Math::XM_PI / 180.0f;
+
+
 
     RootSignature s_RootSig;
     ComputePSO s_TransmittanceLutPSO(L"Atmosphere: Transmittance LUT CS");
@@ -88,9 +102,12 @@ namespace
     GraphicsPSO s_DebugViewPSO(L"Atmosphere: Debug View PSO");
     GraphicsPSO s_DebugViewVolumePSO(L"Atmosphere: Debug View Volume PSO");
     GraphicsPSO s_AtmosphereRaymarchingReferencePSO(L"Atmosphere: Raymarching PSO");
+    ComputePSO s_SkyViewLutPSO(L"Atmosphere: Sky View LUT CS");
+    GraphicsPSO s_SkyViewCompositePSO(L"Atmosphere: Sky View Composite PSO");
 
     ColorBuffer s_TransmittanceLut;
     ColorBuffer s_MultiScatteringLut;
+    ColorBuffer s_SkyViewLut;
     VolumeBuffer s_VolumeTest;
 
     AtmosphereConstants s_Constants;
@@ -108,6 +125,35 @@ namespace
     BoolVar s_EnableMultiScattering("Graphics/Atmosphere/Enable Multi Scattering", true);
     BoolVar s_ShowMultiScatteringLut("Graphics/Atmosphere/Debug/Show Multi Scattering LUT", false);
     NumVar s_MultiScatteringDebugExposure("Graphics/Atmosphere/Debug/Multi Scattering Exposure", 20.0f, 1.0f, 200.0f, 5.0f);
+
+    EnumVar s_SkyMode("Graphics/Atmosphere/Sky Mode", kSkyModeSkyViewLut, _countof(kSkyModeLabels), kSkyModeLabels);
+    BoolVar s_ShowSkyViewLut("Graphics/Atmosphere/Debug/Show Sky View LUT", false);
+    NumVar s_SkyViewDebugExposure("Graphics/Atmosphere/Debug/Sky View Exposure", 2.0f, 0.1f, 50.0f, 0.5f);
+
+    SkyViewConstants BuildViewConstants(const Math::Camera& Camera, const Math::Vector3& SunDirection, float SunIlluminance)
+    {
+        Math::Vector3 CameraPos = Camera.GetPosition();
+        float CameraHeightKm = (float)CameraPos.GetY() * kWorldUnitsToKm + s_CameraAltitudeKm;
+
+        SkyViewConstants ViewConstants = {};
+        ViewConstants.InvViewProj = Math::Invert(Camera.GetViewProjMatrix());
+        ViewConstants.CameraPositionKm[0] = (float)CameraPos.GetX() * kWorldUnitsToKm;
+        ViewConstants.CameraPositionKm[1] = s_Constants.BottomRadius + Math::Max(CameraHeightKm, 0.01f);
+        ViewConstants.CameraPositionKm[2] = (float)CameraPos.GetZ() * kWorldUnitsToKm;
+        ViewConstants.SunIlluminance = SunIlluminance;
+        ViewConstants.SunDirection[0] = (float)SunDirection.GetX();
+        ViewConstants.SunDirection[1] = (float)SunDirection.GetY();
+        ViewConstants.SunDirection[2] = (float)SunDirection.GetZ();
+        ViewConstants.SunDiskCosAngle = cosf(kSunDiskHalfAngleRadians);
+        ViewConstants.SunDiskIntensity = s_SunDiskIntensity;
+        ViewConstants.MultiScatteringFactor = s_EnableMultiScattering ? 1.0f : 0.0f;
+        return ViewConstants;
+    }
+
+    float GetLength(const float(&Vector)[3])
+    {
+        return sqrtf(Vector[0] * Vector[0] + Vector[1] * Vector[1] + Vector[2] * Vector[2]);
+    }
 
     void SetFloat3(float(&Dest)[3], float X, float Y, float Z)
     {
@@ -189,11 +235,15 @@ void Atmosphere::Initialize(void)
     InitializeDebugViewPSO(s_DebugViewPSO, g_pSkyDebugViewPS, sizeof(g_pSkyDebugViewPS));
     InitializeDebugViewPSO(s_DebugViewVolumePSO, g_pSkyDebugViewVolumePS, sizeof(g_pSkyDebugViewVolumePS));
     InitializeSkyPSO(s_AtmosphereRaymarchingReferencePSO, g_pAtmosphereRaymarchingReferencePS, sizeof(g_pAtmosphereRaymarchingReferencePS));
+    InitializeComputePSO(s_SkyViewLutPSO, g_pAtmosphereSkyViewLutCS, sizeof(g_pAtmosphereSkyViewLutCS));
+    InitializeSkyPSO(s_SkyViewCompositePSO, g_pAtmosphereSkyViewPS, sizeof(g_pAtmosphereSkyViewPS));
 
     s_TransmittanceLut.Create(L"Atmosphere Transmittance LUT",
         kTransmittanceLutWidth, kTransmittanceLutHeight, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
     s_MultiScatteringLut.Create(L"Atmosphere Multi Scattering LUT",
         kMultiScatteringLutSize, kMultiScatteringLutSize, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
+    s_SkyViewLut.Create(L"Atmosphere Sky View LUT",
+        kSkyViewLutWidth, kSkyViewLutHeight, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
     s_VolumeTest.Create(L"Atmosphere Volume Test",
         kVolumeTestSize, kVolumeTestSize, kVolumeTestSize, 1, DXGI_FORMAT_R8G8B8A8_UNORM);
 
@@ -206,6 +256,7 @@ void Atmosphere::Shutdown(void)
 {
     s_TransmittanceLut.Destroy();
     s_MultiScatteringLut.Destroy();
+    s_SkyViewLut.Destroy();
     s_VolumeTest.Destroy();
 }
 
@@ -265,38 +316,57 @@ void Atmosphere::RenderSky(
 {
     ScopedTimer _prof(L"Atmosphere Sky", Context);
 
-    Math::Vector3 CameraPos = Camera.GetPosition();
-    float CameraHeightKm = (float)CameraPos.GetY() * kWorldUnitsToKm + s_CameraAltitudeKm;
+    SkyViewConstants ViewConstants = BuildViewConstants(Camera, SunDirection, SunIlluminance);
 
-    SkyViewConstants ViewConstants = {};
-    ViewConstants.InvViewProj = Math::Invert(Camera.GetViewProjMatrix());
-    ViewConstants.CameraPositionKm[0] = (float)CameraPos.GetX() * kWorldUnitsToKm;
-    ViewConstants.CameraPositionKm[1] = s_Constants.BottomRadius + Math::Max(CameraHeightKm, 0.01f);
-    ViewConstants.CameraPositionKm[2] = (float)CameraPos.GetZ() * kWorldUnitsToKm;
-    ViewConstants.SunIlluminance = SunIlluminance;
-    ViewConstants.SunDirection[0] = (float)SunDirection.GetX();
-    ViewConstants.SunDirection[1] = (float)SunDirection.GetY();
-    ViewConstants.SunDirection[2] = (float)SunDirection.GetZ();
-    ViewConstants.SunDiskCosAngle = cosf(kSunDiskHalfAngleRadians);
-    ViewConstants.SunDiskIntensity = s_SunDiskIntensity;
-    ViewConstants.MultiScatteringFactor = s_EnableMultiScattering ? 1.0f : 0.0f;
+    const bool bCameraInAtmosphere = GetLength(ViewConstants.CameraPositionKm) < s_Constants.TopRadius;
+    const bool bUseSkyViewLut = (s_SkyMode == kSkyModeSkyViewLut) && bCameraInAtmosphere;
 
-    Context.SetRootSignature(s_RootSig);
-    Context.SetPipelineState(s_AtmosphereRaymarchingReferencePSO);
-    Context.SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    if (bUseSkyViewLut)
+    {
+        ScopedTimer _prof2(L"Sky View LUT", Context);
 
-    Context.TransitionResource(s_TransmittanceLut, kShaderResourceState);
-    Context.TransitionResource(s_MultiScatteringLut, kShaderResourceState);
-    Context.TransitionResource(g_SceneDepthBuffer, D3D12_RESOURCE_STATE_DEPTH_READ);
-    Context.TransitionResource(g_SceneColorBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, true);
-    Context.SetRenderTarget(g_SceneColorBuffer.GetRTV(), g_SceneDepthBuffer.GetDSV_DepthReadOnly());
-    Context.SetViewportAndScissor(Viewport, Scissor);
+        ComputeContext& Compute = Context.GetComputeContext();
+        Compute.SetRootSignature(s_RootSig);
+        Compute.SetPipelineState(s_SkyViewLutPSO);
 
-    Context.SetDynamicConstantBufferView(kAtmosphereCBV, sizeof(s_Constants), &s_Constants);
-    Context.SetDynamicConstantBufferView(kViewCBV, sizeof(ViewConstants), &ViewConstants);
-    Context.SetDynamicDescriptor(kSRVs, 0, s_TransmittanceLut.GetSRV());
-    Context.SetDynamicDescriptor(kSRVs, 1, s_MultiScatteringLut.GetSRV());
-    Context.Draw(3);
+        Compute.TransitionResource(s_TransmittanceLut, kShaderResourceState);
+        Compute.TransitionResource(s_MultiScatteringLut, kShaderResourceState);
+        Compute.TransitionResource(s_SkyViewLut, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+
+        Compute.SetDynamicConstantBufferView(kAtmosphereCBV, sizeof(s_Constants), &s_Constants);
+        Compute.SetDynamicConstantBufferView(kViewCBV, sizeof(ViewConstants), &ViewConstants);
+        Compute.SetDynamicDescriptor(kSRVs, 0, s_TransmittanceLut.GetSRV());
+        Compute.SetDynamicDescriptor(kSRVs, 1, s_MultiScatteringLut.GetSRV());
+        Compute.SetDynamicDescriptor(kUAVs, 0, s_SkyViewLut.GetUAV());
+        Compute.Dispatch2D(kSkyViewLutWidth, kSkyViewLutHeight, 8, 8);
+
+        Compute.TransitionResource(s_SkyViewLut, kShaderResourceState);
+    }
+
+    {
+        ScopedTimer _prof3(L"Sky Composite", Context);
+
+        Context.SetRootSignature(s_RootSig);
+        Context.SetPipelineState(bUseSkyViewLut ? s_SkyViewCompositePSO : s_AtmosphereRaymarchingReferencePSO);
+        Context.SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+        Context.TransitionResource(s_TransmittanceLut, kShaderResourceState);
+        Context.TransitionResource(s_MultiScatteringLut, kShaderResourceState);
+        Context.TransitionResource(s_SkyViewLut, kShaderResourceState);
+        Context.TransitionResource(g_SceneDepthBuffer, D3D12_RESOURCE_STATE_DEPTH_READ);
+        Context.TransitionResource(g_SceneColorBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, true);
+        Context.SetRenderTarget(g_SceneColorBuffer.GetRTV(), g_SceneDepthBuffer.GetDSV_DepthReadOnly());
+        Context.SetViewportAndScissor(Viewport, Scissor);
+
+        Context.SetDynamicConstantBufferView(kAtmosphereCBV, sizeof(s_Constants), &s_Constants);
+        Context.SetDynamicConstantBufferView(kViewCBV, sizeof(ViewConstants), &ViewConstants);
+        Context.SetDynamicDescriptor(kSRVs, 0, s_TransmittanceLut.GetSRV());
+        Context.SetDynamicDescriptor(kSRVs, 1, s_MultiScatteringLut.GetSRV());
+        Context.SetDynamicDescriptor(kSRVs, 2, s_SkyViewLut.GetSRV());
+        Context.Draw(3);
+    }
+
+
 }
 
 bool Atmosphere::IsAtmosphereEnabled(void)
@@ -306,7 +376,7 @@ bool Atmosphere::IsAtmosphereEnabled(void)
 
 void Atmosphere::RenderDebug(GraphicsContext& Context)
 {
-    if (!s_ShowTransmittanceLut && !s_ShowMultiScatteringLut && !s_ShowVolumeTest)
+    if (!s_ShowTransmittanceLut && !s_ShowMultiScatteringLut && !s_ShowSkyViewLut && !s_ShowVolumeTest)
         return;
 
     Context.SetRootSignature(s_RootSig);
@@ -340,7 +410,17 @@ void Atmosphere::RenderDebug(GraphicsContext& Context)
 
         Top += kMultiScatteringLutSize * kDebugViewScale * 2 + kDebugViewMargin;
     }
+    if (s_ShowSkyViewLut)
+    {
+        Context.TransitionResource(s_SkyViewLut, kShaderResourceState, true);
+        Context.SetPipelineState(s_DebugViewPSO);
+        Context.SetDynamicDescriptor(kSRVs, 0, s_SkyViewLut.GetSRV());
+        Context.SetConstants(kDebugConstants, (float)s_SkyViewDebugExposure, 0.0f);
+        Context.SetViewportAndScissor(kDebugViewMargin, Top, kSkyViewLutWidth * 2, kSkyViewLutHeight * 2);
+        Context.Draw(3);
 
+        Top += kSkyViewLutHeight * 2 + kDebugViewMargin;
+    }
     if (s_ShowVolumeTest)
     {
         Context.TransitionResource(s_VolumeTest, kShaderResourceState, true);
