@@ -49,6 +49,7 @@ cbuffer GlobalConstants : register(b1)
     float _pad;
     float IBLRange;
     float IBLBias;
+    float IBLIntensity;
 }
 
 struct VSOutput
@@ -271,9 +272,11 @@ float4 main(VSOutput vsOutput) : SV_Target0
 
     Surface.c_diff *= ssao;
     Surface.c_spec *= ssao;
-    colorAccum += Diffuse_IBL(Surface);
-    colorAccum += Specular_IBL(Surface);
 
+    //colorAccum += Diffuse_IBL(Surface);
+    //colorAccum += Specular_IBL(Surface);
+    colorAccum += (Diffuse_IBL(Surface) + Specular_IBL(Surface)) * IBLIntensity;
+    
     // TODO: Shade each light using Forward+ tiles
 
     return float4(colorAccum, baseColor.a);

@@ -23,6 +23,8 @@ namespace Atmosphere
 
 	bool IsAtmosphereEnabled(void);
 
+	Math::Vector3 ComputeSunTransmittance(float AltitudeKm, const Math::Vector3& SunDirection);
+
 	void RenderDebug(GraphicsContext& Context);
 };
 

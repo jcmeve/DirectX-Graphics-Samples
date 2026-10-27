@@ -434,6 +434,51 @@ bool Atmosphere::IsAtmosphereEnabled(void)
     return s_EnableAtmosphere;
 }
 
+Math::Vector3 Atmosphere::ComputeSunTransmittance(float AltitudeKm, const Math::Vector3& SunDirection)
+{
+
+    const AtmosphereConstants& C = s_Constants;
+    const float r = Math::Min(C.BottomRadius + Math::Max(AltitudeKm, 0.0f), C.TopRadius);
+
+    const float Mu = (float)SunDirection.GetY();//천정각
+
+    
+    const float BottomRatio = C.BottomRadius / r;
+    const float HorizonMu = -sqrtf(Math::Max(0.0f, 1.0f - BottomRatio * BottomRatio));
+    if (Mu < HorizonMu)//행성 그림자
+        return Math::Vector3(Math::kZero);
+
+    const float B = r * Mu;
+    const float RayLength = -B + sqrtf(Math::Max(0.0f, B * B - (r * r - C.TopRadius * C.TopRadius)));
+
+    // AtmosphereTransmittanceLutCS
+    const int kSteps = 40;
+    const float StepSize = RayLength / kSteps;
+    const float SinTheta = sqrtf(Math::Max(0.0f, 1.0f - Mu * Mu));
+    float OpticalDepth[3] = { 0.0f, 0.0f, 0.0f };
+
+    for (int i = 0; i < kSteps; ++i)
+    {
+        const float t = (i + 0.5f) * StepSize;
+        const float X = t * SinTheta;
+        const float Y = r + t * Mu;
+        const float Height = sqrtf(X * X + Y * Y) - C.BottomRadius;
+
+        const float RayleighDensity = expf(-Height / C.RayleighScaleHeight);
+        const float MieDensity = expf(-Height / C.MieScaleHeight);
+        const float OzoneDensity = Math::Max(0.0f, 1.0f - fabsf(Height - C.OzoneCenterHeight) / C.OzoneHalfWidth);
+
+        for (int Channel = 0; Channel < 3; ++Channel)
+        {
+            OpticalDepth[Channel] += (C.RayleighScattering[Channel] * RayleighDensity
+                + C.MieExtinction[Channel] * MieDensity
+                + C.OzoneExtinction[Channel] * OzoneDensity) * StepSize;
+        }
+    }
+
+    return Math::Vector3(expf(-OpticalDepth[0]), expf(-OpticalDepth[1]), expf(-OpticalDepth[2]));
+}
+
 void Atmosphere::RenderDebug(GraphicsContext& Context)
 {
     if (!s_ShowTransmittanceLut && !s_ShowMultiScatteringLut && !s_ShowSkyViewLut && !s_ShowAerialPerspective)

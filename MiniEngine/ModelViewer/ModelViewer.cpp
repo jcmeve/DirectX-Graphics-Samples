@@ -67,6 +67,9 @@ private:
 
     ModelInstance m_ModelInst;
     ShadowCamera m_SunShadowCamera;
+
+    Vector3 m_ShadowCenter = Vector3(0.0f, -500.0f, 0.0f);
+    Vector3 m_ShadowBounds = Vector3(5000.0f, 3000.0f, 3000.0f);
 };
 
 CREATE_APPLICATION( ModelViewer )
@@ -74,6 +77,8 @@ CREATE_APPLICATION( ModelViewer )
 ExpVar g_SunLightIntensity("Viewer/Lighting/Sun Light Intensity", 4.0f, 0.0f, 16.0f, 0.1f);
 NumVar g_SunOrientation("Viewer/Lighting/Sun Orientation", -0.5f, -100.0f, 100.0f, 0.1f );
 NumVar g_SunInclination("Viewer/Lighting/Sun Inclination", 0.75f, -0.2f, 1.0f, 0.01f );
+NumVar g_IBLIntensity("Viewer/Lighting/IBL Intensity", 1.0f, 0.0f, 4.0f, 0.1f);
+const float kNightIBLScale = 0.02f;
 
 void ChangeIBLSet(EngineVar::ActionType);
 void ChangeIBLBias(EngineVar::ActionType);
@@ -188,6 +193,10 @@ void ModelViewer::Startup( void )
         Vector3 TerrainExtent = obb.GetDimensions();
         Utility::Printf("Terrain extent (km): %.2f x %.2f x %.2f\n",
             (float)TerrainExtent.GetX() * 1.0e-5f, (float)TerrainExtent.GetY() * 1.0e-5f, (float)TerrainExtent.GetZ() * 1.0e-5f);
+
+        float ShadowSize = Length(TerrainExtent) * 1.05f;
+        m_ShadowCenter = TerrainCenter;
+        m_ShadowBounds = Vector3(ShadowSize, ShadowSize, ShadowSize);
 
         Vector3 Eye = TerrainCenter + Vector3(0.0f,
             (float)TerrainExtent.GetY() * 0.5f + 200.0f, -(float)TerrainExtent.GetZ() * 0.4f);
@@ -307,17 +316,29 @@ void ModelViewer::RenderScene( void )
         float sinphi = sinf(g_SunInclination * 3.14159f * 0.5f);
 
         Vector3 SunDirection = Normalize(Vector3( costheta * cosphi, sinphi, sintheta * cosphi ));
-        Vector3 ShadowBounds = Vector3(m_ModelInst.GetRadius());
+        //Vector3 ShadowBounds = Vector3(m_ModelInst.GetRadius());
         //m_SunShadowCamera.UpdateMatrix(-SunDirection, m_ModelInst.GetCenter(), ShadowBounds,
-        m_SunShadowCamera.UpdateMatrix(-SunDirection, Vector3(0, -500.0f, 0), Vector3(5000, 3000, 3000),
+        //m_SunShadowCamera.UpdateMatrix(-SunDirection, Vector3(0, -500.0f, 0), Vector3(5000, 3000, 3000),
+            //(uint32_t)g_ShadowBuffer.GetWidth(), (uint32_t)g_ShadowBuffer.GetHeight(), 16);
+
+        Vector3 ShadowCenter = ShadowCenter = m_ShadowCenter - SunDirection * (m_ShadowBounds.GetZ() * 0.5f);
+        m_SunShadowCamera.UpdateMatrix(-SunDirection, ShadowCenter, m_ShadowBounds,
             (uint32_t)g_ShadowBuffer.GetWidth(), (uint32_t)g_ShadowBuffer.GetHeight(), 16);
+
 
         GlobalConstants globals;
         globals.ViewProjMatrix = m_Camera.GetViewProjMatrix();
         globals.SunShadowMatrix = m_SunShadowCamera.GetShadowMatrix();
         globals.CameraPos = m_Camera.GetPosition();
         globals.SunDirection = SunDirection;
-        globals.SunIntensity = Vector3(Scalar(g_SunLightIntensity));
+        //globals.SunIntensity = Vector3(Scalar(g_SunLightIntensity));
+        Vector3 SunTransmittance = Atmosphere::ComputeSunTransmittance(0.0f, SunDirection);
+        globals.SunIntensity = SunTransmittance * Scalar(g_SunLightIntensity);
+        
+        float SunElevationT = Math::Clamp(((float)SunDirection.GetY() + 0.1f) / 0.25f, 0.0f, 1.0f);
+        float SunElevationFactor = SunElevationT * SunElevationT * (3.0f - 2.0f * SunElevationT);
+        globals.IBLIntensity = g_IBLIntensity * Math::Max(kNightIBLScale, SunElevationFactor);
+
 
         // Begin rendering depth
         gfxContext.TransitionResource(g_SceneDepthBuffer, D3D12_RESOURCE_STATE_DEPTH_WRITE, true);

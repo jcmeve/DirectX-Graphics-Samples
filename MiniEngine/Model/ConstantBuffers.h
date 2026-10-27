@@ -66,15 +66,5 @@ __declspec(align(256)) struct GlobalConstants
     Math::Vector3 SunIntensity;
     float IBLRange;
     float IBLBias;
-};
-
-__declspec(align(256)) struct AtmosphereConstants
-{
-    Math::Matrix4 ViewProjMatrix;
-    Math::Matrix4 SunShadowMatrix;
-    Math::Vector3 CameraPos;
-    Math::Vector3 SunDirection;
-    Math::Vector3 SunIntensity;
-    float IBLRange;
-    float IBLBias;
+    float IBLIntensity;
 };
