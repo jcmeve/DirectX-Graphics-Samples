@@ -41,12 +41,6 @@
     </FxCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Atmosphere.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="Atmosphere.cpp" />
-  </ItemGroup>
-  <ItemGroup>
     <None Include="Shaders\AtmosphereCommon.hlsli">
       <Filter>Shaders</Filter>
     </None>
@@ -56,5 +50,21 @@
     <None Include="Shaders\SkyViewCommon.hlsli">
       <Filter>Shaders</Filter>
     </None>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Atmosphere.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Clouds.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Atmosphere.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Clouds.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

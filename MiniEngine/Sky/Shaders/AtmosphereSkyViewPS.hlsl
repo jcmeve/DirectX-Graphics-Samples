@@ -13,7 +13,6 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_TARGET0
 	
     float ViewZenithCos = dot(Dir, Up);
 	
-    // 천정을 보거나 태양이 천정에 있으면 방위가 의미 없으므로 1(태양 쪽)로 둠
     float LightViewCos = 1.0;
     float3 Side = cross(Up, Dir);
     if (dot(Side, Side) > 1e-8)

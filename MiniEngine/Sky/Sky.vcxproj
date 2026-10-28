@@ -57,9 +57,11 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Atmosphere.h" />
+    <ClInclude Include="Clouds.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Atmosphere.cpp" />
+    <ClCompile Include="Clouds.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{51847F30-BD43-4343-AE6D-10E41B1A15BB}</ProjectGuid>

@@ -34,6 +34,7 @@
 #include "ShadowCamera.h"
 #include "Display.h"
 #include "Atmosphere.h"
+#include "Clouds.h"
 
 //#define LEGACY_RENDERER
 
@@ -147,8 +148,8 @@ void LoadIBLTextures()
 
     Utility::Printf("Found %u IBL environment map sets\n", g_IBLTextures.size());
 
-    if (g_IBLTextures.size() > 0)
-        g_IBLSet.Increment();
+    //if (g_IBLTextures.size() > 0)
+    //    g_IBLSet.Increment();
 }
 
 void ModelViewer::Startup( void )
@@ -162,6 +163,7 @@ void ModelViewer::Startup( void )
 
     Renderer::Initialize();
 	Atmosphere::Initialize();
+    Clouds::Initialize();
 
     LoadIBLTextures();
 
@@ -245,6 +247,7 @@ void ModelViewer::Cleanup( void )
 #endif
 	Atmosphere::Shutdown();
     Renderer::Shutdown();
+    Clouds::Shutdown();
 }
 
 namespace Graphics
@@ -321,7 +324,7 @@ void ModelViewer::RenderScene( void )
         //m_SunShadowCamera.UpdateMatrix(-SunDirection, Vector3(0, -500.0f, 0), Vector3(5000, 3000, 3000),
             //(uint32_t)g_ShadowBuffer.GetWidth(), (uint32_t)g_ShadowBuffer.GetHeight(), 16);
 
-        Vector3 ShadowCenter = ShadowCenter = m_ShadowCenter - SunDirection * (m_ShadowBounds.GetZ() * 0.5f);
+        Vector3 ShadowCenter = m_ShadowCenter - SunDirection * (m_ShadowBounds.GetZ() * 0.5f);
         m_SunShadowCamera.UpdateMatrix(-SunDirection, ShadowCenter, m_ShadowBounds,
             (uint32_t)g_ShadowBuffer.GetWidth(), (uint32_t)g_ShadowBuffer.GetHeight(), 16);
 
@@ -423,4 +426,5 @@ void ModelViewer::RenderScene( void )
 void ModelViewer::RenderUI(GraphicsContext& Context)
 {
 	Atmosphere::RenderDebug(Context);
+    Clouds::RenderDebug(Context);
 }
