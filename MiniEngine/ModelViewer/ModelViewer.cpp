@@ -397,10 +397,14 @@ void ModelViewer::RenderScene( void )
             }
 
             if (Atmosphere::IsAtmosphereEnabled())
+            {
                 Atmosphere::RenderSky(gfxContext, m_Camera, SunDirection, g_SunLightIntensity, viewport, scissor);
+                Clouds::Render(gfxContext, m_Camera, viewport, scissor);
+            }
             else
+            {
                 Renderer::DrawSkybox(gfxContext, m_Camera, viewport, scissor);
-
+            }
             sorter.RenderMeshes(MeshSorter::kTransparent, gfxContext, globals);
         }
     }

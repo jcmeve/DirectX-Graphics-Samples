@@ -113,6 +113,12 @@ float MiePhase(float CosTheta, float G)
     return Upper / Lower;
 }
 
+float HenyeyGreenstein(float CosTheta, float G)
+{
+    float G2 = G * G;
+    return (1.0 - G2) / (4.0 * kPi * pow(max(1.0 + G2 - 2.0 * G * CosTheta, 1e-4), 1.5));
+}
+
 //비선형 맵핑이다. UV.y는 현재 위치의 지표면 기준 고도 [0,1] UV.x는 시선 방향으로 대기외부와의 거리[0,1]
 //결과로 나오는 r은 현재 위치의 실제 고도, Mu는 천정각
 void UvToRmu(float2 UV, out float r, out float Mu)
@@ -263,6 +269,18 @@ float2 SkyViewParamsToUv(bool bIntersectGround, float ViewZenithCos, float Light
     return float2(UnitToSubUv(UV.x, kSkyViewLutSize.x), UnitToSubUv(UV.y, kSkyViewLutSize.y));
 }
 
-
+// 거리(km) -> Aerial Perspective 볼륨 
+float4 SampleAerialPerspective(Texture3D<float4> Volume, SamplerState LinearClamp, float2 UV, float DistanceKm)
+{
+    float Slice = DistanceKm / kAerialPerspectiveMaxDistanceKm * kAerialPerspectiveSliceCount;
+    float Weight = 1.0;
+    if (Slice < 0.5)
+    {
+        Weight = saturate(Slice * 2.0);
+        Slice = 0.5;
+    }
+    float W = sqrt(Slice / kAerialPerspectiveSliceCount);
+    return Volume.SampleLevel(LinearClamp, float3(UV, W), 0) * Weight;
+}
 
 #endif

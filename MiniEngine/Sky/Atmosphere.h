@@ -25,6 +25,9 @@ namespace Atmosphere
 
 	Math::Vector3 ComputeSunTransmittance(float AltitudeKm, const Math::Vector3& SunDirection);
 
+	//외부에서 필요 시 바인딩
+	void BindSkyInputs(GraphicsContext& Context, UINT AtmosphereCBV, UINT ViewCBV, UINT SRVTable);
+
 	void RenderDebug(GraphicsContext& Context);
 };
 

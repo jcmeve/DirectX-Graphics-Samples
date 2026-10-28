@@ -18,6 +18,7 @@
     <None Include="Shaders\AtmosphereCommon.hlsli">
       <FileType>Document</FileType>
     </None>
+    <None Include="Shaders\CloudCommon.hlsli" />
     <None Include="Shaders\SkyDebugView.hlsli">
       <FileType>Document</FileType>
     </None>
@@ -44,6 +45,9 @@
     </FxCompile>
     <FxCompile Include="Shaders\AtmosphereTransmittanceLutCS.hlsl">
       <ShaderType>Compute</ShaderType>
+    </FxCompile>
+    <FxCompile Include="Shaders\CloudRaymarchingPS.hlsl">
+      <ShaderType>Pixel</ShaderType>
     </FxCompile>
     <FxCompile Include="Shaders\SkyDebugViewPS.hlsl">
       <ShaderType>Pixel</ShaderType>

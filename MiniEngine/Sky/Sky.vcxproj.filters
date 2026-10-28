@@ -39,6 +39,9 @@
     <FxCompile Include="Shaders\AtmosphereAerialPerspectivePS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
+    <FxCompile Include="Shaders\CloudRaymarchingPS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="Shaders\AtmosphereCommon.hlsli">
@@ -48,6 +51,9 @@
       <Filter>Shaders</Filter>
     </None>
     <None Include="Shaders\SkyViewCommon.hlsli">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Shaders\CloudCommon.hlsli">
       <Filter>Shaders</Filter>
     </None>
   </ItemGroup>

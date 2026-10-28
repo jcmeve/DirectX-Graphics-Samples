@@ -116,6 +116,8 @@ namespace
     VolumeBuffer s_AerialPerspectiveVolume;
 
     AtmosphereConstants s_Constants;
+    SkyViewConstants s_LastViewConstants;
+
     bool s_bTransmittanceDirty = true;
     bool s_bVolumeTestDirty = true;
 
@@ -336,6 +338,7 @@ void Atmosphere::RenderSky(
     ScopedTimer _prof(L"Atmosphere Sky", Context);
 
     SkyViewConstants ViewConstants = BuildViewConstants(Camera, SunDirection, SunIlluminance);
+    s_LastViewConstants = ViewConstants;
 
     const bool bCameraInAtmosphere = GetLength(ViewConstants.CameraPositionKm) < s_Constants.TopRadius;
     const bool bUseSkyViewLut = (s_SkyMode == kSkyModeSkyViewLut) && bCameraInAtmosphere;
@@ -477,6 +480,19 @@ Math::Vector3 Atmosphere::ComputeSunTransmittance(float AltitudeKm, const Math::
     }
 
     return Math::Vector3(expf(-OpticalDepth[0]), expf(-OpticalDepth[1]), expf(-OpticalDepth[2]));
+}
+
+void Atmosphere::BindSkyInputs(GraphicsContext& Context, UINT AtmosphereCBV, UINT ViewCBV, UINT SRVTable)
+{
+    Context.TransitionResource(s_TransmittanceLut, kShaderResourceState);
+    Context.TransitionResource(s_SkyViewLut, kShaderResourceState);
+    Context.TransitionResource(s_AerialPerspectiveVolume, kShaderResourceState);
+
+    Context.SetDynamicConstantBufferView(AtmosphereCBV, sizeof(s_Constants), &s_Constants);
+    Context.SetDynamicConstantBufferView(ViewCBV, sizeof(s_LastViewConstants), &s_LastViewConstants);
+    Context.SetDynamicDescriptor(SRVTable, 0, s_TransmittanceLut.GetSRV());
+    Context.SetDynamicDescriptor(SRVTable, 1, s_SkyViewLut.GetSRV());
+    Context.SetDynamicDescriptor(SRVTable, 2, s_AerialPerspectiveVolume.GetSRV());
 }
 
 void Atmosphere::RenderDebug(GraphicsContext& Context)
