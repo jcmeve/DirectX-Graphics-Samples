@@ -12,7 +12,30 @@ static const float kPhaseBackwardG = -0.2;
 static const float kLightStepStart = 16.0; //m
 static const int kLightStepCount = 6;
 static const float kMinTransmittance = 0.01;
+static const int kScatterOctaveCount = 3;
+static const float kOctaveAttenuation = 0.5;
+static const float kOctaveContribution = 0.5;
+static const float kOctaveEccentricity = 0.5;
 
+float GetDualLobePhase(float CosTheta, float Eccentricity)
+{
+    return lerp(HenyeyGreenstein(CosTheta, kPhaseForwardG * Eccentricity),
+                HenyeyGreenstein(CosTheta, kPhaseBackwardG * Eccentricity), 0.5);
+}
+
+float GetSunScattering(float LightDepth, float CosTheta)
+{
+    float Result = 0.0;
+    float a = 1.0, b = 1.0, c = 1.0;
+    for (int o = 0; o < kScatterOctaveCount; ++o)
+    {
+        Result += b * exp(-LightDepth * a) * GetDualLobePhase(CosTheta, c);
+        a *= kOctaveAttenuation;
+        b *= kOctaveContribution;
+        c *= kOctaveEccentricity;
+    }
+    return Result;
+}
 
 
 // 원점(카메라)에서 시작하는 레이와 AABB 교차. x = 진입, y = 탈출
@@ -34,7 +57,7 @@ float InterleavedGradientNoise(float2 Pixel, uint Frame)
 }
 
 // 태양 방향 레이마칭
-float GetLightOpticalDepth(float3 RelPos)
+float GetLightOpticalDepth(float3 RelPos, float ViewDistance)
 {
     float OpticalDepth = 0.0;
     float Distance = 0.0;
@@ -43,6 +66,7 @@ float GetLightOpticalDepth(float3 RelPos)
     {
         float3 Coord = (RelPos + SunDirection * (Distance + StepLength * 0.5) - BoundsMin) / BoundsSize;
         OpticalDepth += SampleCloudProfile(Coord) * StepLength;
+
         Distance += StepLength;
         StepLength *= 2.0;
     }
@@ -102,12 +126,12 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
             float StepTransmittance = exp(-Density * Extinction * BaseStep);
 
             // Multi Scattering 근사
-            float LightDepth = GetLightOpticalDepth(RelPos);
-            float LightTransmittance = max(exp(-LightDepth), exp(-LightDepth * 0.25) * 0.7);
+            float LightDepth = GetLightOpticalDepth(RelPos, t);
 
-            float3 StepLuminance = SunIlluminance * GetSunTransmittance(RelPos) * Phase * LightTransmittance
+            
+            float3 StepLuminance = SunIlluminance * GetSunTransmittance(RelPos) * GetSunScattering(LightDepth, CosTheta)
                 + SkyAmbient * lerp(0.5, 1.0, Coord.y);
-
+            
             float Weight = Transmittance * (1.0 - StepTransmittance);
             Luminance += StepLuminance * Weight;
             WeightedDistance += t * Weight;

@@ -5,10 +5,13 @@ cbuffer CloudConstants : register(b3)
 {
     float3 BoundsMin; //m
     float Extinction; //¼Ò¸ê °è¼ö (1/m)
+
     float3 BoundsSize; //m
     float StepScale; // ±âº» ½ºÅÜ = max(1, sqrt(°Å¸®) * StepScale)
+
     float3 CameraPosition; //m
     float WorldToMeters;
+
     float AmbientScale;
     float MipDistanceScale;
     uint MaxSteps;
