@@ -37,25 +37,6 @@ float GetSunScattering(float LightDepth, float CosTheta)
     return Result;
 }
 
-
-// 원점(카메라)에서 시작하는 레이와 AABB 교차. x = 진입, y = 탈출
-float2 RayBoxIntersect(float3 Dir, float3 BoxMin, float3 BoxMax)
-{
-    float3 InvDir = 1.0 / Dir;
-    float3 T0 = BoxMin * InvDir;
-    float3 T1 = BoxMax * InvDir;
-    float3 TMin = min(T0, T1);
-    float3 TMax = max(T0, T1);
-    return float2(max(max(TMin.x, TMin.y), max(TMin.z, 0.0)), min(min(TMax.x, TMax.y), TMax.z));
-}
-
-//좌표기반 의사난수생성함수, 균일하고 성능이 좋다.
-float InterleavedGradientNoise(float2 Pixel, uint Frame)
-{
-    Pixel += 5.588238 * (float) (Frame % 64);
-    return frac(52.9829189 * frac(dot(Pixel, float2(0.06711056, 0.00583715))));
-}
-
 // 태양 방향 레이마칭
 float GetLightOpticalDepth(float3 RelPos, float ViewDistance)
 {
@@ -85,7 +66,7 @@ float3 GetSunTransmittance(float3 RelPos)
 float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
 {
     float3 Dir = GetWorldViewDir(UV);
-    float2 Hit = RayBoxIntersect(Dir, BoundsMin, BoundsMin + BoundsSize);
+    float2 Hit = RayBoxIntersect(0.0, Dir, BoundsMin, BoundsMin + BoundsSize);
 
     //뎁스 버퍼로 길이 계산
     float SceneDistance = GetSceneViewDistance(UV, SceneDepth[uint2(Position.xy)]) * WorldToMeters;

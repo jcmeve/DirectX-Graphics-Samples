@@ -9,6 +9,8 @@
 #include "EngineTuning.h"
 #include "EngineProfiling.h"
 #include "Camera.h"
+#include "TextureManager.h"
+#include "CloudShadowConstants.h"
 
 #include "CompiledShaders/AtmosphereTransmittanceLutCS.h"
 #include "CompiledShaders/SkyFullscreenVS.h"
@@ -69,7 +71,8 @@ namespace
         kAtmosphereCBV,     //b0
         kDebugConstants,    //b1
         kViewCBV,           //b2
-        kSRVs,              //t0 ~ t3
+        kCloudShadowCBV,    //b4
+        kSRVs,              //t0 ~ t7
         kUAVs,              //u0 ~ u3
         kNumRootBindings
     };
@@ -118,6 +121,9 @@ namespace
     AtmosphereConstants s_Constants;
     SkyViewConstants s_LastViewConstants;
 
+    CloudShadowConstants s_CloudShadowConstants;
+    D3D12_CPU_DESCRIPTOR_HANDLE s_CloudShadowSRV;
+
     bool s_bTransmittanceDirty = true;
     bool s_bVolumeTestDirty = true;
 
@@ -142,6 +148,17 @@ namespace
     NumVar s_AerialPerspectiveDebugSlice("Graphics/Atmosphere/Debug/Aerial Perspective Slice", 0.5f, 0.0f, 1.0f, 0.05f);
     NumVar s_AerialPerspectiveDebugExposure("Graphics/Atmosphere/Debug/Aerial Perspective Exposure", 10.0f, 1.0f, 200.0f, 5.0f);
 #pragma endregion
+
+    void BindCloudShadow(GraphicsContext& Context)
+    {
+        CloudShadowConstants Constants = s_CloudShadowConstants;
+        if (!s_EnableAerialPerspective)
+            Constants.ShaftMaxDistanceKm = 0.0f;
+
+        Context.SetDynamicConstantBufferView(kCloudShadowCBV, sizeof(Constants), &Constants);
+        Context.SetDynamicDescriptor(kSRVs, 5, s_CloudShadowSRV);
+    }
+
 
     SkyViewConstants BuildViewConstants(const Math::Camera& Camera, const Math::Vector3& SunDirection, float SunIlluminance)
     {
@@ -241,6 +258,7 @@ void Atmosphere::Initialize(void)
     s_RootSig[kAtmosphereCBV].InitAsConstantBuffer(0);
     s_RootSig[kDebugConstants].InitAsConstants(1, 4);
     s_RootSig[kViewCBV].InitAsConstantBuffer(2);
+    s_RootSig[kCloudShadowCBV].InitAsConstantBuffer(4);
     s_RootSig[kSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 8);
     s_RootSig[kUAVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 0, 4);
     s_RootSig.Finalize(L"Atmosphere");
@@ -277,6 +295,8 @@ void Atmosphere::Initialize(void)
     SetDefaultConstants();
     s_bTransmittanceDirty = true;
     s_bVolumeTestDirty = true;
+
+    s_CloudShadowSRV = GetDefaultTexture(kBlackTransparent2D);
 }
 
 void Atmosphere::Shutdown(void)
@@ -402,6 +422,7 @@ void Atmosphere::RenderSky(
         Context.SetDynamicConstantBufferView(kViewCBV, sizeof(ViewConstants), &ViewConstants);
         Context.SetDynamicDescriptor(kSRVs, 3, s_AerialPerspectiveVolume.GetSRV());
         Context.SetDynamicDescriptor(kSRVs, 4, g_SceneDepthBuffer.GetDepthSRV());
+        BindCloudShadow(Context);
         Context.Draw(3);
     }
 
@@ -426,6 +447,8 @@ void Atmosphere::RenderSky(
         Context.SetDynamicDescriptor(kSRVs, 0, s_TransmittanceLut.GetSRV());
         Context.SetDynamicDescriptor(kSRVs, 1, s_MultiScatteringLut.GetSRV());
         Context.SetDynamicDescriptor(kSRVs, 2, s_SkyViewLut.GetSRV());
+        Context.SetDynamicDescriptor(kSRVs, 3, s_AerialPerspectiveVolume.GetSRV());
+        BindCloudShadow(Context);
         Context.Draw(3);
     }
 
@@ -493,6 +516,12 @@ void Atmosphere::BindSkyInputs(GraphicsContext& Context, UINT AtmosphereCBV, UIN
     Context.SetDynamicDescriptor(SRVTable, 0, s_TransmittanceLut.GetSRV());
     Context.SetDynamicDescriptor(SRVTable, 1, s_SkyViewLut.GetSRV());
     Context.SetDynamicDescriptor(SRVTable, 2, s_AerialPerspectiveVolume.GetSRV());
+}
+
+void Atmosphere::SetCloudShadow(D3D12_CPU_DESCRIPTOR_HANDLE ShadowMapSRV, const CloudShadowConstants& Constants)
+{
+    s_CloudShadowSRV = ShadowMapSRV;
+    s_CloudShadowConstants = Constants;
 }
 
 void Atmosphere::RenderDebug(GraphicsContext& Context)

@@ -4,6 +4,7 @@
 
 class GraphicsContext;
 class ComputeContext;
+struct CloudShadowConstants;
 
 namespace Math
 {
@@ -27,6 +28,8 @@ namespace Atmosphere
 
 	//외부에서 필요 시 바인딩
 	void BindSkyInputs(GraphicsContext& Context, UINT AtmosphereCBV, UINT ViewCBV, UINT SRVTable);
+
+	void SetCloudShadow(D3D12_CPU_DESCRIPTOR_HANDLE ShadowMapSRV, const CloudShadowConstants& Constants);
 
 	void RenderDebug(GraphicsContext& Context);
 };

@@ -72,10 +72,8 @@ float SampleCloudProfile(float3 Coord)
     return Modeling.r * Modeling.b;
 }
 
-float GetUprezzedVoxelCloudDensity(float3 SamplePosition, float Distance, float Profile, float Type, float DensityScale, bool bHFDetails)
+float GetUprezzedVoxelCloudDensity(float3 SamplePosition, float Distance, float MipLevel, float Profile, float Type, float DensityScale, bool bHFDetails)
 {
-    // 거리 기반 밉
-    float MipLevel = log2(1.0 + Distance * MipDistanceScale);
     float4 Noise = CloudNoise.SampleLevel(LinearWrapSampler, SamplePosition.xzy * kNoiseFrequency, MipLevel);
 
     float WispyNoise = lerp(Noise.r, Noise.g, Profile);
@@ -119,10 +117,36 @@ float2 GetVoxelCloudDensity(float3 Coord, float3 SamplePosition, float Distance)
     if (Profile <= 0.0)
         return 0.0;
 
+    // 거리 기반 밉
+    float MipLevel = log2(1.0 + Distance * MipDistanceScale);
+    
     // 구름 가까워지면 투명하게 블렌딩
-    float Full = GetUprezzedVoxelCloudDensity(SamplePosition, Distance, Profile, Modeling.g, Modeling.b, Distance < kHFDetailDistance)
+    float Full = GetUprezzedVoxelCloudDensity(SamplePosition, Distance, MipLevel, Profile, Modeling.g, Modeling.b, Distance < kHFDetailDistance)
         * ValueRemap(Distance, 10.0, 120.0, 0.25, 1.0);
     return float2(Profile * Modeling.b, Full);
+}
+
+float GetVoxelCloudShadowDensity(float3 Coord, float3 SamplePosition, float MipLevel)
+{
+    if (!IsInsideBounds(Coord))
+        return 0.0;
+
+    float3 Modeling = CloudModeling.SampleLevel(LinearClampSampler, ToVolumeUVW(Coord), 0).rgb;
+    if (Modeling.r <= 0.0)
+        return 0.0;
+
+    return GetUprezzedVoxelCloudDensity(SamplePosition, kHFDetailDistance, MipLevel, Modeling.r, Modeling.g, Modeling.b, false);
+}
+
+// AABB
+float2 RayBoxIntersect(float3 Origin, float3 Dir, float3 BoxMin, float3 BoxMax)
+{
+    float3 InvDir = 1.0 / Dir;
+    float3 T0 = (BoxMin - Origin) * InvDir;
+    float3 T1 = (BoxMax - Origin) * InvDir;
+    float3 TMin = min(T0, T1);
+    float3 TMax = max(T0, T1);
+    return float2(max(max(TMin.x, TMin.y), max(TMin.z, 0.0)), min(min(TMax.x, TMax.y), TMax.z));
 }
 
 #endif

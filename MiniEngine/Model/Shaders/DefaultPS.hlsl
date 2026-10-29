@@ -29,6 +29,7 @@ TextureCube<float3> radianceIBLTexture      : register(t10);
 TextureCube<float3> irradianceIBLTexture    : register(t11);
 Texture2D<float> texSSAO			        : register(t12);
 Texture2D<float> texSunShadow			    : register(t13);
+Texture2D<float4> texCloudShadow            : register(t18);
 
 cbuffer MaterialConstants : register(b0)
 {
@@ -50,6 +51,7 @@ cbuffer GlobalConstants : register(b1)
     float IBLRange;
     float IBLBias;
     float IBLIntensity;
+    float4x4 CloudShadowMatrix;
 }
 
 struct VSOutput
@@ -240,6 +242,17 @@ float3 ComputeNormal(VSOutput vsOutput)
 #endif
 }
 
+static const float kCloudShadowWorldToMeters = 0.01;
+
+float GetCloudShadow(float3 WorldPos)
+{
+    float3 ShadowPos = mul(CloudShadowMatrix, float4(WorldPos * kCloudShadowWorldToMeters, 1.0)).xyz;
+    if (any(ShadowPos.xy < 0.0) || any(ShadowPos.xy > 1.0))
+        return 1.0;
+    float3 Bsm = texCloudShadow.SampleLevel(defaultSampler, ShadowPos.xy, 0).rgb;
+    return exp(-clamp((ShadowPos.z - Bsm.x) * Bsm.y, 0.0, Bsm.z));
+}
+
 [RootSignature(Renderer_RootSig)]
 float4 main(VSOutput vsOutput) : SV_Target0
 {
@@ -268,7 +281,7 @@ float4 main(VSOutput vsOutput) : SV_Target0
     float ssao = texSSAO[pixelPos];
 
     float sunShadow = texSunShadow.SampleCmpLevelZero(shadowSampler, vsOutput.sunShadowCoord.xy, vsOutput.sunShadowCoord.z);
-    colorAccum += ShadeDirectionalLight(Surface, SunDirection, sunShadow * SunIntensity);
+    colorAccum += ShadeDirectionalLight(Surface, SunDirection, sunShadow * GetCloudShadow(vsOutput.worldPos) * SunIntensity);
 
     Surface.c_diff *= ssao;
     Surface.c_spec *= ssao;
@@ -276,7 +289,6 @@ float4 main(VSOutput vsOutput) : SV_Target0
     //colorAccum += Diffuse_IBL(Surface);
     //colorAccum += Specular_IBL(Surface);
     colorAccum += (Diffuse_IBL(Surface) + Specular_IBL(Surface)) * IBLIntensity;
-    
     // TODO: Shade each light using Forward+ tiles
 
     return float4(colorAccum, baseColor.a);

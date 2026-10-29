@@ -67,4 +67,5 @@ __declspec(align(256)) struct GlobalConstants
     float IBLRange;
     float IBLBias;
     float IBLIntensity;
+    Math::Matrix4 CloudShadowMatrix;
 };

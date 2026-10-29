@@ -15,10 +15,12 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <None Include="Shaders\AtmosphereCloudShadow.hlsli" />
     <None Include="Shaders\AtmosphereCommon.hlsli">
       <FileType>Document</FileType>
     </None>
     <None Include="Shaders\CloudCommon.hlsli" />
+    <None Include="Shaders\CloudShadowCommon.hlsli" />
     <None Include="Shaders\SkyDebugView.hlsli">
       <FileType>Document</FileType>
     </None>
@@ -49,6 +51,7 @@
     <FxCompile Include="Shaders\CloudRaymarchingPS.hlsl">
       <ShaderType>Pixel</ShaderType>
     </FxCompile>
+    <FxCompile Include="Shaders\CloudShadowCS.hlsl" />
     <FxCompile Include="Shaders\SkyDebugViewPS.hlsl">
       <ShaderType>Pixel</ShaderType>
     </FxCompile>
@@ -62,6 +65,7 @@
   <ItemGroup>
     <ClInclude Include="Atmosphere.h" />
     <ClInclude Include="Clouds.h" />
+    <ClInclude Include="CloudShadowConstants.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Atmosphere.cpp" />

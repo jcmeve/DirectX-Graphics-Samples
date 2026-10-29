@@ -42,6 +42,9 @@
     <FxCompile Include="Shaders\CloudRaymarchingPS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
+    <FxCompile Include="Shaders\CloudShadowCS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="Shaders\AtmosphereCommon.hlsli">
@@ -54,6 +57,12 @@
       <Filter>Shaders</Filter>
     </None>
     <None Include="Shaders\CloudCommon.hlsli">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Shaders\CloudShadowCommon.hlsli">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Shaders\AtmosphereCloudShadow.hlsli">
       <Filter>Shaders</Filter>
     </None>
   </ItemGroup>
@@ -70,6 +79,9 @@
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="Clouds.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="CloudShadowConstants.h">
       <Filter>Source Files</Filter>
     </ClInclude>
   </ItemGroup>

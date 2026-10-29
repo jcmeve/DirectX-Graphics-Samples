@@ -164,7 +164,7 @@ void ModelViewer::Startup( void )
     Renderer::Initialize();
 	Atmosphere::Initialize();
     Clouds::Initialize();
-
+    Renderer::SetCloudShadowTexture(Clouds::GetShadowMapSRV());
     LoadIBLTextures();
 
     std::wstring gltfFileName;
@@ -341,6 +341,11 @@ void ModelViewer::RenderScene( void )
         float SunElevationT = Math::Clamp(((float)SunDirection.GetY() + 0.1f) / 0.25f, 0.0f, 1.0f);
         float SunElevationFactor = SunElevationT * SunElevationT * (3.0f - 2.0f * SunElevationT);
         globals.IBLIntensity = g_IBLIntensity * Math::Max(kNightIBLScale, SunElevationFactor);
+
+        Clouds::RenderShadowMap(gfxContext.GetComputeContext(), m_Camera, SunDirection);
+        const CloudShadowConstants& CloudShadow = Clouds::GetShadowConstants();
+        Atmosphere::SetCloudShadow(Clouds::GetShadowMapSRV(), CloudShadow);
+        globals.CloudShadowMatrix = CloudShadow.WorldToShadow;
 
 
         // Begin rendering depth
