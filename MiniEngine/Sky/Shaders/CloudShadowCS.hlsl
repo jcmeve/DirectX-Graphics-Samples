@@ -5,7 +5,6 @@ RWTexture2D<float4> CloudShadowMap : register(u0);
 
 static const float kShadowStepMeters = 16.0;
 static const uint kShadowMaxSteps = 256;
-static const float kNoiseTexelMeters = 1.0 / (kNoiseFrequency * 128.0); // 노이즈 1텍셀 = 0.78m
 
 [numthreads(8, 8, 1)]
 void main(uint3 DTid : SV_DispatchThreadID)
@@ -24,7 +23,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
     float TexelMeters = max(length(mul(CloudShadowShadowToWorld, float4(1.0 / Size.x, 0.0, 0.0, 0.0)).xyz),
                             length(mul(CloudShadowShadowToWorld, float4(0.0, 1.0 / Size.y, 0.0, 0.0)).xyz));
     // 텍셀이 표현하는 공간이 크다면 밉 레벨 올림
-    float MipLevel = log2(max(TexelMeters / kNoiseTexelMeters, 1.0));
+    float MipLevel = GetNoiseMipFromFootprint(TexelMeters);
 
     float3 BoxMin = BoundsMin + CameraPosition;
     float2 Hit = RayBoxIntersect(RayOrigin, RayDir, BoxMin, BoxMin + BoundsSize);

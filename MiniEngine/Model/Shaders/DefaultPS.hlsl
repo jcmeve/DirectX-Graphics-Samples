@@ -30,6 +30,7 @@ TextureCube<float3> irradianceIBLTexture    : register(t11);
 Texture2D<float> texSSAO			        : register(t12);
 Texture2D<float> texSunShadow			    : register(t13);
 Texture2D<float4> texCloudShadow            : register(t18);
+Texture2D<float3> texSkyAmbient             : register(t19);
 
 cbuffer MaterialConstants : register(b0)
 {
@@ -51,6 +52,7 @@ cbuffer GlobalConstants : register(b1)
     float IBLRange;
     float IBLBias;
     float IBLIntensity;
+    float SkyAmbientIntensity;
     float4x4 CloudShadowMatrix;
 }
 
@@ -286,9 +288,11 @@ float4 main(VSOutput vsOutput) : SV_Target0
     Surface.c_diff *= ssao;
     Surface.c_spec *= ssao;
 
+    colorAccum += Surface.c_diff * texSkyAmbient.Load(int3(0, 0, 0)) * (0.5 + 0.5 * Surface.N.y) * SkyAmbientIntensity;
+    
     //colorAccum += Diffuse_IBL(Surface);
     //colorAccum += Specular_IBL(Surface);
-    colorAccum += (Diffuse_IBL(Surface) + Specular_IBL(Surface)) * IBLIntensity;
+    //colorAccum += (Diffuse_IBL(Surface) + Specular_IBL(Surface)) * IBLIntensity;
     // TODO: Shade each light using Forward+ tiles
 
     return float4(colorAccum, baseColor.a);

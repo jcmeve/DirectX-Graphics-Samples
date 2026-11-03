@@ -39,6 +39,9 @@
     <FxCompile Include="Shaders\AtmosphereRaymarchingReferencePS.hlsl">
       <ShaderType>Pixel</ShaderType>
     </FxCompile>
+    <FxCompile Include="Shaders\AtmosphereSkyAmbientCS.hlsl">
+      <ShaderType>Compute</ShaderType>
+    </FxCompile>
     <FxCompile Include="Shaders\AtmosphereSkyViewLutCS.hlsl">
       <ShaderType>Compute</ShaderType>
     </FxCompile>

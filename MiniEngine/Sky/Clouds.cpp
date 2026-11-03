@@ -38,8 +38,8 @@ namespace
     const uint32_t kDebugViewMargin = 16;
 
     const wchar_t* kNoisePath = L"NubisVoxelCloudsPack/DDS/NubisNoise.dds";
-    const wchar_t* kModelingPath = L"NubisVoxelCloudsPack/DDS/ParkouringCloud_Modeling.dds";
-    const wchar_t* kFieldPath = L"NubisVoxelCloudsPack/DDS/ParkouringCloud_Field.dds";
+    const wchar_t* kModelingPath = L"NubisVoxelCloudsPack/DDS/StormbirdCloud_Modeling.dds";
+    const wchar_t* kFieldPath = L"NubisVoxelCloudsPack/DDS/StormbirdCloud_Field.dds";
 
     __declspec(align(16)) struct CloudConstants
     {
@@ -61,7 +61,8 @@ namespace
    
 
     const float kWorldUnitsToMeters = 0.01f; //cm to m
-    const float kCloudBoundsSize[3] = { 4096.0f, 512.0f, 4096.0f }; 
+    const float kCloudScale = 2.0f;
+    const float kCloudBoundsSize[3] = { 4096.0f * kCloudScale, 512.0f * kCloudScale, 4096.0f * kCloudScale };
 
     RootSignature s_RootSig;
     GraphicsPSO s_DebugViewVolumePSO(L"Clouds: Debug View Volume PSO");

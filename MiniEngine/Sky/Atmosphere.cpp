@@ -22,6 +22,7 @@
 #include "CompiledShaders/AtmosphereSkyViewPS.h"
 #include "CompiledShaders/AtmosphereAerialPerspectiveCS.h"
 #include "CompiledShaders/AtmosphereAerialPerspectivePS.h"
+#include "CompiledShaders/AtmosphereSkyAmbientCS.h"
 
 using namespace Graphics;
 
@@ -111,12 +112,13 @@ namespace
     GraphicsPSO s_SkyViewCompositePSO(L"Atmosphere: Sky View Composite PSO");
     ComputePSO s_AerialPerspectivePSO(L"Atmosphere: Aerial Perspective CS");
     GraphicsPSO s_ApplyAerialPerspectivePSO(L"Atmosphere: Apply Aerial Perspective PSO");
-
+    ComputePSO s_SkyAmbientPSO(L"Atmosphere: Sky Ambient CS");
 
     ColorBuffer s_TransmittanceLut;
     ColorBuffer s_MultiScatteringLut;
     ColorBuffer s_SkyViewLut;
     VolumeBuffer s_AerialPerspectiveVolume;
+    ColorBuffer s_SkyAmbient;
 
     AtmosphereConstants s_Constants;
     SkyViewConstants s_LastViewConstants;
@@ -271,6 +273,7 @@ void Atmosphere::Initialize(void)
     InitializeComputePSO(s_SkyViewLutPSO, g_pAtmosphereSkyViewLutCS, sizeof(g_pAtmosphereSkyViewLutCS));
     InitializeSkyPSO(s_SkyViewCompositePSO, g_pAtmosphereSkyViewPS, sizeof(g_pAtmosphereSkyViewPS));
     InitializeComputePSO(s_AerialPerspectivePSO, g_pAtmosphereAerialPerspectiveCS, sizeof(g_pAtmosphereAerialPerspectiveCS));
+    InitializeComputePSO(s_SkyAmbientPSO, g_pAtmosphereSkyAmbientCS, sizeof(g_pAtmosphereSkyAmbientCS));
 
     s_ApplyAerialPerspectivePSO.SetRootSignature(s_RootSig);
     s_ApplyAerialPerspectivePSO.SetRasterizerState(RasterizerTwoSided);
@@ -291,7 +294,15 @@ void Atmosphere::Initialize(void)
         kSkyViewLutWidth, kSkyViewLutHeight, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
     s_AerialPerspectiveVolume.Create(L"Atmosphere Aerial Perspective",
         kAerialPerspectiveSize, kAerialPerspectiveSize, kAerialPerspectiveSize, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
-    
+    s_SkyAmbient.Create(L"Atmosphere Sky Ambient",
+        1, 1, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
+
+    GraphicsContext& InitContext = GraphicsContext::Begin(L"Atmosphere Sky Ambient Init");
+    InitContext.TransitionResource(s_SkyAmbient, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+    InitContext.ClearUAV(s_SkyAmbient);
+    InitContext.TransitionResource(s_SkyAmbient, kShaderResourceState);
+    InitContext.Finish();
+
     SetDefaultConstants();
     s_bTransmittanceDirty = true;
     s_bVolumeTestDirty = true;
@@ -305,6 +316,8 @@ void Atmosphere::Shutdown(void)
     s_MultiScatteringLut.Destroy();
     s_SkyViewLut.Destroy();
     s_AerialPerspectiveVolume.Destroy();
+    s_AerialPerspectiveVolume.Destroy();
+    s_SkyAmbient.Destroy();
 }
 
 void Atmosphere::Update(ComputeContext& Context)
@@ -383,6 +396,13 @@ void Atmosphere::RenderSky(
         Compute.Dispatch2D(kSkyViewLutWidth, kSkyViewLutHeight, 8, 8);
 
         Compute.TransitionResource(s_SkyViewLut, kShaderResourceState);
+
+        Compute.SetPipelineState(s_SkyAmbientPSO);
+        Compute.TransitionResource(s_SkyAmbient, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+        Compute.SetDynamicDescriptor(kSRVs, 0, s_SkyViewLut.GetSRV());
+        Compute.SetDynamicDescriptor(kUAVs, 0, s_SkyAmbient.GetUAV());
+        Compute.Dispatch(1, 1, 1);
+        Compute.TransitionResource(s_SkyAmbient, kShaderResourceState);
     }
 
     if (s_EnableAerialPerspective)
@@ -522,6 +542,11 @@ void Atmosphere::SetCloudShadow(D3D12_CPU_DESCRIPTOR_HANDLE ShadowMapSRV, const 
 {
     s_CloudShadowSRV = ShadowMapSRV;
     s_CloudShadowConstants = Constants;
+}
+
+D3D12_CPU_DESCRIPTOR_HANDLE Atmosphere::GetSkyAmbientSRV(void)
+{
+    return s_SkyAmbient.GetSRV();
 }
 
 void Atmosphere::RenderDebug(GraphicsContext& Context)

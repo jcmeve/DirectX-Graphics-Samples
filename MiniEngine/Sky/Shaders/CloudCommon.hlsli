@@ -27,8 +27,14 @@ SamplerState LinearWrapSampler : register(s1);
 static const float kSdfMinMeters = -256.0;
 static const float kSdfMaxMeters = 4096.0;
 static const float kNoiseFrequency = 0.01; // 노이즈 100m 타일
-static const float kHFDetailDistance = 150.0;
+static const float kHFDetailDistance = 15000.0;
+static const float kNoiseTexelMeters = 1.0 / (kNoiseFrequency * 128.0);
 static const float kCloudEpsilon = 1e-4;
+
+float GetNoiseMipFromFootprint(float FootprintMeters)
+{
+    return log2(max(FootprintMeters / kNoiseTexelMeters, 1.0));
+}
 
 float ValueRemap(float Value, float OldMin, float OldMax, float NewMin, float NewMax)
 {
@@ -83,7 +89,6 @@ float GetUprezzedVoxelCloudDensity(float3 SamplePosition, float Distance, float 
 
     // Type 0 = wispy, 1 = billowy
     float NoiseComposite = lerp(WispyNoise, BillowyNoise, Type);
-
     if (bHFDetails)
     {
         float HHFNoise = saturate(lerp(1.0 - pow(abs(abs(Noise.g * 2.0 - 1.0) * 2.0 - 1.0), 4.0),
@@ -96,7 +101,7 @@ float GetUprezzedVoxelCloudDensity(float3 SamplePosition, float Distance, float 
     float Density = ValueErosion(Profile, NoiseComposite);
 
     float PoweredDensityScale = pow(saturate(DensityScale), 4.0);
-    Density *= PoweredDensityScale;
+    Density *= DensityScale; //PoweredDensityScale;
 
     // 경계 선명화
     Density = pow(Density, lerp(0.3, 0.6, max(kCloudEpsilon, PoweredDensityScale)));

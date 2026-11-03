@@ -77,8 +77,15 @@ CREATE_APPLICATION( ModelViewer )
 
 ExpVar g_SunLightIntensity("Viewer/Lighting/Sun Light Intensity", 4.0f, 0.0f, 16.0f, 0.1f);
 NumVar g_SunOrientation("Viewer/Lighting/Sun Orientation", -0.5f, -100.0f, 100.0f, 0.1f );
-NumVar g_SunInclination("Viewer/Lighting/Sun Inclination", 0.75f, -0.2f, 1.0f, 0.01f );
+NumVar g_SunInclination("Viewer/Lighting/Sun Inclination", 0.75f, -0.2f, 2.2f, 0.01f);
+#pragma region "Sun Animation"
+BoolVar g_AnimateSun("Viewer/Lighting/Animate Sun", false);
+NumVar g_SunCycleSeconds("Viewer/Lighting/Sun Cycle Seconds", 30.0f, 5.0f, 300.0f, 5.0f);
+NumVar g_SunAnimMinInclination("Viewer/Lighting/Sun Anim Min Inclination", -0.1f, -0.2f, 2.2f, 0.01f);
+NumVar g_SunAnimMaxInclination("Viewer/Lighting/Sun Anim Max Inclination", 2.1f, -0.2f, 2.2f, 0.01f);
+#pragma endregion
 NumVar g_IBLIntensity("Viewer/Lighting/IBL Intensity", 1.0f, 0.0f, 4.0f, 0.1f);
+NumVar g_SkyAmbientIntensity("Viewer/Lighting/Sky Ambient Intensity", 1.0f, 0.0f, 4.0f, 0.1f);
 const float kNightIBLScale = 0.02f;
 
 void ChangeIBLSet(EngineVar::ActionType);
@@ -165,6 +172,7 @@ void ModelViewer::Startup( void )
 	Atmosphere::Initialize();
     Clouds::Initialize();
     Renderer::SetCloudShadowTexture(Clouds::GetShadowMapSRV());
+    Renderer::SetSkyAmbientTexture(Atmosphere::GetSkyAmbientSRV());
     LoadIBLTextures();
 
     std::wstring gltfFileName;
@@ -266,6 +274,16 @@ void ModelViewer::Update( float deltaT )
 
     m_CameraController->Update(deltaT);
 
+    if (g_AnimateSun)
+    {
+        const float MinInclination = g_SunAnimMinInclination;
+        const float MaxInclination = g_SunAnimMaxInclination;
+        float Inclination = g_SunInclination + (MaxInclination - MinInclination) * deltaT / g_SunCycleSeconds;
+        if (Inclination > MaxInclination || Inclination < MinInclination)
+            Inclination = MinInclination;
+        g_SunInclination = Inclination;
+    }
+
     GraphicsContext& gfxContext = GraphicsContext::Begin(L"Scene Update");
 
     m_ModelInst.Update(gfxContext, deltaT);
@@ -341,6 +359,7 @@ void ModelViewer::RenderScene( void )
         float SunElevationT = Math::Clamp(((float)SunDirection.GetY() + 0.1f) / 0.25f, 0.0f, 1.0f);
         float SunElevationFactor = SunElevationT * SunElevationT * (3.0f - 2.0f * SunElevationT);
         globals.IBLIntensity = g_IBLIntensity * Math::Max(kNightIBLScale, SunElevationFactor);
+        globals.SkyAmbientIntensity = Atmosphere::IsAtmosphereEnabled() ? (float)g_SkyAmbientIntensity : 0.0f;
 
         Clouds::RenderShadowMap(gfxContext.GetComputeContext(), m_Camera, SunDirection);
         const CloudShadowConstants& CloudShadow = Clouds::GetShadowConstants();

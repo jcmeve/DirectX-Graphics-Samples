@@ -37,7 +37,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
     int StepCount = max(1, (int) (DTid.z + 1) * 2);
 
     float3 Throughput;
-    float3 Luminance = IntegrateScatteredLuminance(TransmittanceLut, MultiScatteringLut, LinearClampSampler,//기존과 같은 패스, 제한된 거리만 적분
+    float3 Luminance = IntegrateScatteredLuminance(TransmittanceLut, MultiScatteringLut, LinearClampSampler,
         Origin, Dir, SunDirection, SunIlluminance, MultiScatteringFactor, StepCount,
         MaxDistance, true, Throughput);
 

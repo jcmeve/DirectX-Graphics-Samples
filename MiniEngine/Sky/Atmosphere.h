@@ -31,6 +31,8 @@ namespace Atmosphere
 
 	void SetCloudShadow(D3D12_CPU_DESCRIPTOR_HANDLE ShadowMapSRV, const CloudShadowConstants& Constants);
 
+	D3D12_CPU_DESCRIPTOR_HANDLE GetSkyAmbientSRV(void);
+
 	void RenderDebug(GraphicsContext& Context);
 };
 

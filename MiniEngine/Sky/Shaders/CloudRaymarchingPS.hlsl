@@ -11,6 +11,10 @@ static const float kPhaseForwardG = 0.8;
 static const float kPhaseBackwardG = -0.2;
 static const float kLightStepStart = 16.0; //m
 static const int kLightStepCount = 6;
+static const int kLightErosionStepCount = 3;
+static const float2 kLightJitterPixelOffset = float2(47.0, 17.0);
+static const float kGoldenRatioFrac = 0.61803398875;
+
 static const float kMinTransmittance = 0.01;
 static const int kScatterOctaveCount = 3;
 static const float kOctaveAttenuation = 0.5;
@@ -38,15 +42,20 @@ float GetSunScattering(float LightDepth, float CosTheta)
 }
 
 // 태양 방향 레이마칭
-float GetLightOpticalDepth(float3 RelPos, float ViewDistance)
+float GetLightOpticalDepth(float3 RelPos, float ViewDistance, float Jitter)
 {
     float OpticalDepth = 0.0;
     float Distance = 0.0;
     float StepLength = kLightStepStart;
     for (int i = 0; i < kLightStepCount; ++i)
     {
-        float3 Coord = (RelPos + SunDirection * (Distance + StepLength * 0.5) - BoundsMin) / BoundsSize;
-        OpticalDepth += SampleCloudProfile(Coord) * StepLength;
+        float3 SampleRelPos = RelPos + SunDirection * (Distance + StepLength * Jitter);
+        float3 Coord = (SampleRelPos - BoundsMin) / BoundsSize;
+
+        float Density = (i < kLightErosionStepCount)
+            ? GetVoxelCloudShadowDensity(Coord, SampleRelPos + CameraPosition, GetNoiseMipFromFootprint(StepLength))
+            : SampleCloudProfile(Coord);
+        OpticalDepth += Density * StepLength;
 
         Distance += StepLength;
         StepLength *= 2.0;
@@ -85,8 +94,10 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     float3 Luminance = 0.0;
     float WeightedDistance = 0.0;
     float WeightSum = 0.0;
-
-    float t = Hit.x + InterleavedGradientNoise(Position.xy, FrameIndex) * max(1.0, sqrt(Hit.x) * StepScale);
+    
+    float LightJitter = InterleavedGradientNoise(Position.xy + kLightJitterPixelOffset, FrameIndex);
+    
+    float t = Hit.x +InterleavedGradientNoise(Position.xy, FrameIndex) * max(1.0, sqrt(Hit.x) * StepScale);
     for (uint i = 0; i < MaxSteps && t < Hit.y; ++i)
     {
         float3 RelPos = Dir * t;
@@ -107,8 +118,7 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
             float StepTransmittance = exp(-Density * Extinction * BaseStep);
 
             // Multi Scattering 근사
-            float LightDepth = GetLightOpticalDepth(RelPos, t);
-
+            float LightDepth = GetLightOpticalDepth(RelPos, t, frac(LightJitter + i * kGoldenRatioFrac));
             
             float3 StepLuminance = SunIlluminance * GetSunTransmittance(RelPos) * GetSunScattering(LightDepth, CosTheta)
                 + SkyAmbient * lerp(0.5, 1.0, Coord.y);

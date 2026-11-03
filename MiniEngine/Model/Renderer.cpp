@@ -219,10 +219,10 @@ void Renderer::Initialize(void)
     Lighting::InitializeResources();
 
     // Allocate a descriptor table for the common textures
-    m_CommonTextures = s_TextureHeap.Alloc(9);
+    m_CommonTextures = s_TextureHeap.Alloc(10);
 
-    uint32_t DestCount = 9;
-    uint32_t SourceCounts[] = { 1, 1, 1, 1, 1, 1, 1, 1, 1};
+    uint32_t DestCount = 10;
+    uint32_t SourceCounts[] = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
 
     D3D12_CPU_DESCRIPTOR_HANDLE SourceTextures[] =
     {
@@ -234,6 +234,7 @@ void Renderer::Initialize(void)
         Lighting::m_LightShadowArray.GetSRV(),
         Lighting::m_LightGrid.GetSRV(),
         Lighting::m_LightGridBitMask.GetSRV(),
+        GetDefaultTexture(kBlackTransparent2D),
         GetDefaultTexture(kBlackTransparent2D),
     };
 
@@ -304,6 +305,15 @@ void Renderer::SetCloudShadowTexture(D3D12_CPU_DESCRIPTOR_HANDLE CloudShadowSRV)
 
     DescriptorHandle Dest = m_CommonTextures + 8 * s_TextureHeap.GetDescriptorSize();
     g_Device->CopyDescriptors(1, &Dest, &DestCount, DestCount, &CloudShadowSRV, SourceCounts, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+}
+
+void Renderer::SetSkyAmbientTexture(D3D12_CPU_DESCRIPTOR_HANDLE SkyAmbientSRV)
+{
+    uint32_t DestCount = 1;
+    uint32_t SourceCounts[] = { 1 };
+
+    DescriptorHandle Dest = m_CommonTextures + 9 * s_TextureHeap.GetDescriptorSize();
+    g_Device->CopyDescriptors(1, &Dest, &DestCount, DestCount, &SkyAmbientSRV, SourceCounts, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 }
 
 void Renderer::SetIBLBias(float LODBias)
