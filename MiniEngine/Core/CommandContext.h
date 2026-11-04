@@ -28,6 +28,7 @@
 #include <vector>
 
 class ColorBuffer;
+class VolumeBuffer;
 class DepthBuffer;
 class Texture;
 class GraphicsContext;
@@ -201,7 +202,8 @@ public:
     }
 
     void ClearUAV( GpuBuffer& Target );
-    void ClearUAV( ColorBuffer& Target );
+    void ClearUAV(ColorBuffer& Target);
+    void ClearUAV( VolumeBuffer& Target );
     void ClearColor( ColorBuffer& Target, D3D12_RECT* Rect = nullptr);
     void ClearColor(ColorBuffer& Target, float Colour[4], D3D12_RECT* Rect = nullptr);
     void ClearDepth( DepthBuffer& Target );

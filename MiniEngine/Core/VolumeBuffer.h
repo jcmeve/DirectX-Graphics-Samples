@@ -1,5 +1,6 @@
 #pragma once
 #include "PixelBuffer.h"
+#include "Color.h"
 
 class VolumeBuffer : public PixelBuffer
 {
@@ -19,6 +20,7 @@ public:
 	const D3D12_CPU_DESCRIPTOR_HANDLE GetUAV(uint32_t MipLevel = 0) const { ASSERT(MipLevel >= 0 && MipLevel < m_NumMips); return m_UAVHandle[MipLevel]; }
 
 	uint32_t GetNumMips(void) const { return m_NumMips; }
+	Color GetClearColor(void) const { return Color(0.f, 0.f, 0.f, 0.f); }
 
 private:
 

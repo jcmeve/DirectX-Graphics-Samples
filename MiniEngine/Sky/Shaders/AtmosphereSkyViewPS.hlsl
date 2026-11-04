@@ -30,13 +30,8 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_TARGET0
     float2 LutUV = SkyViewParamsToUv(bIntersectGround, ViewZenithCos, LightViewCos, ViewHeight);
     float3 Luminance = SkyViewLut.SampleLevel(LinearClampSampler, LutUV, 0).rgb;
 
-    //// 구름 그림자 빛줄기
-    //float Jitter = InterleavedGradientNoise(Position.xy, CloudShadowFrameIndex);
-    //Luminance = max(Luminance - GetCloudShadowedInScattering(AerialPerspectiveVolume, LinearClampSampler, UV, Dir, kAerialPerspectiveMaxDistanceKm, Jitter), 0.0);
-    
     // 구름 그림자 빛줄기
-    float Jitter = InterleavedGradientNoise(Position.xy, CloudShadowFrameIndex);
-    Luminance = max(Luminance - SampleAtmosphereShadow(AtmosphereShadowVolume, LinearClampSampler, UV, kAtmosphereShadowMaxDistanceKm).rgb, 0.0);
+    Luminance = max(Luminance - SampleAtmosphereShadow(AtmosphereShadowVolume, LinearClampSampler, UV, CloudShadowShaftMaxDistanceKm), 0.0);
     
     
     if (!bIntersectGround && dot(Dir, SunDirection) > SunDiskCosAngle)

@@ -304,7 +304,7 @@ void Atmosphere::Initialize(void)
         kSkyViewLutWidth, kSkyViewLutHeight, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
     s_AerialPerspectiveVolume.Create(L"Atmosphere Aerial Perspective",
         kAerialPerspectiveSize, kAerialPerspectiveSize, kAerialPerspectiveSize, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
-    s_AtmosphereShadowVolume.Create(L"Atmosphere Aerial Perspective",
+    s_AtmosphereShadowVolume.Create(L"Atmosphere Shadow",
         kAtmosphereShadowWidth, kAtmosphereShadowHeight, kAtmosphereShadowDepth, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
 
     s_SkyAmbient.Create(L"Atmosphere Sky Ambient",
@@ -455,6 +455,7 @@ void Atmosphere::RenderSky(
         Context.SetDynamicConstantBufferView(kViewCBV, sizeof(ViewConstants), &ViewConstants);
         Context.SetDynamicDescriptor(kSRVs, 3, s_AerialPerspectiveVolume.GetSRV());
         Context.SetDynamicDescriptor(kSRVs, 4, g_SceneDepthBuffer.GetDepthSRV());
+        Context.SetDynamicDescriptor(kSRVs, 7, s_AtmosphereShadowVolume.GetSRV());
         BindCloudShadow(Context);
         Context.Draw(3);
     }
@@ -476,9 +477,19 @@ void Atmosphere::RenderSky(
         Compute.SetDynamicDescriptor(kSRVs, 0, s_TransmittanceLut.GetSRV());
         Compute.SetDynamicDescriptor(kSRVs, 1, s_MultiScatteringLut.GetSRV());
         Compute.SetDynamicDescriptor(kUAVs, 0, s_AtmosphereShadowVolume.GetUAV());
-        Compute.Dispatch3D(kAtmosphereShadowWidth, kAtmosphereShadowHeight, kAtmosphereShadowDepth, 8, 8, 1);
+        CloudShadowConstants Constants = s_CloudShadowConstants;
+        if (!s_EnableAerialPerspective)
+            Constants.ShaftMaxDistanceKm = 0.0f;
+
+        Compute.SetDynamicConstantBufferView(kCloudShadowCBV, sizeof(Constants), &Constants);
+        Compute.SetDynamicDescriptor(kSRVs, 5, s_CloudShadowSRV);
+        Compute.Dispatch2D(kAtmosphereShadowWidth, kAtmosphereShadowHeight, 8, 8);
 
         Compute.TransitionResource(s_AtmosphereShadowVolume, kShaderResourceState);
+
+    }
+    else {
+        Context.ClearUAV(s_AtmosphereShadowVolume);
 
     }
 

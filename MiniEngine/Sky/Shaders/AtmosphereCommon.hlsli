@@ -7,8 +7,6 @@ static const float kMultiScatteringLutSize = 32.0;
 static const float2 kSkyViewLutSize = float2(192.0, 108.0); //1920*1080
 static const float kAerialPerspectiveSliceCount = 32.0;
 static const float kAerialPerspectiveMaxDistanceKm = 128.0;
-static const float kAtmosphereShadowSliceCount = 32.0;
-static const float kAtmosphereShadowMaxDistanceKm = 128.0;
 static const float kInfiniteDistance = 1.0e9;
 
 cbuffer AtmosphereConstants : register(b0)
@@ -287,19 +285,6 @@ float4 SampleAerialPerspective(Texture3D<float4> Volume, SamplerState LinearClam
         Slice = 0.5;
     }
     float W = sqrt(Slice / kAerialPerspectiveSliceCount);
-    return Volume.SampleLevel(LinearClamp, float3(UV, W), 0) * Weight;
-}
-
-float4 SampleAtmosphereShadow(Texture3D<float4> Volume, SamplerState LinearClamp, float2 UV, float DistanceKm)
-{
-    float Slice = DistanceKm / kAtmosphereShadowMaxDistanceKm * kAtmosphereShadowSliceCount;
-    float Weight = 1.0;
-    if (Slice < 0.5)
-    {
-        Weight = saturate(Slice * 2.0);
-        Slice = 0.5;
-    }
-    float W = sqrt(Slice / kAtmosphereShadowSliceCount);
     return Volume.SampleLevel(LinearClamp, float3(UV, W), 0) * Weight;
 }
 

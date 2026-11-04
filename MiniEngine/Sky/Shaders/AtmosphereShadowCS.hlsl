@@ -7,6 +7,7 @@ Texture2D<float4> MultiScatteringLut : register(t1);
 SamplerState LinearClampSampler : register(s0);
 RWTexture3D<float4> AtmosphereShadowVolume : register(u0);
 
+static const float kLossStepKm = 0.05;
 [numthreads(8, 8, 1)]
 void main( uint3 DTid : SV_DispatchThreadID )
 {
@@ -17,64 +18,60 @@ void main( uint3 DTid : SV_DispatchThreadID )
     if (any(DTid >= VolumeSize))
         return;
 
-    float2 UV = (DTid.xy + 0.5) / VolumeSize.xy;
-    float3 Dir = GetWorldViewDir(UV);
-
-    float Slice = (DTid.z + 0.5) / VolumeSize.z;
-    float MaxDistance = Slice * Slice * kAerialPerspectiveMaxDistanceKm;
-
-    
+    float MaxKm = CloudShadowShaftMaxDistanceKm;
     float3 Origin = CameraPositionKm;
-    if (!MoveToTopAtmosphere(Origin, Dir))
+    float3 Dir = GetWorldViewDir((DTid.xy + 0.5) / VolumeSize.xy);
+
+    float RayKm = 0.0;
+    if (MaxKm > 0.0 && length(Origin) <= TopRadius)
     {
-        return;
+        float GroundKm = RaySphereNear(Origin, Dir, BottomRadius);
+        RayKm = GroundKm > 0.0 ? GroundKm : RaySphereFar(Origin, Dir, TopRadius);
+        RayKm = min(RayKm, MaxKm);
     }
-    //Loss(d) = ∫₀ᵈ    T_view(x)·    σ_s(x)·    p(θ)·    E_sun· T_sun    (x) · (1−    V(x))    dx
     
+    float CosTheta = dot(Dir, SunDirection);
+    float PhaseR = RayleighPhase(CosTheta);
+    float PhaseM = MiePhase(CosTheta, MiePhaseG);
     
-//    {
+    float Jitter = InterleavedGradientNoise(DTid.xy, CloudShadowFrameIndex);
+    
+    float3 Loss = 0.0;
+    float3 Throughput = 1.0;
+    float PrevKm = 0.0;
+    
+    for (uint z = 0; z < VolumeSize.z; ++z)
+    {
+        float Slice = (z + 0.5) / VolumeSize.z;
+        float SliceKm = min(Slice * Slice * MaxKm, RayKm);
+        
+        float SegmentKm = SliceKm - PrevKm;
+        uint SubStepCnt = (uint) ceil(SegmentKm / kLossStepKm);
+        float StepSize = SegmentKm / max(SubStepCnt, 1);
+        
+        for (int i = 0; i < SubStepCnt; ++i)
+        {
+            float3 SamplePos = Origin + Dir * (PrevKm+( i+Jitter) * StepSize);
+            float r = length(SamplePos);
+            OpticalCoefficients Coefficients = GetOpticalCoefficients(r - BottomRadius);
 
+            float SunMu = dot(SamplePos / r, SunDirection); //천정각
+            float PlanetShadow = (RaySphereNear(SamplePos, SunDirection, BottomRadius) > 0.0) ? 0.0 : 1.0; //행성과 닿은 경우 태양 가시성 0
+            float3 SunTransmittance = SampleTransmittance(TransmittanceLut, LinearClampSampler, r, SunMu) * PlanetShadow;
 
-//// 구름 그림자에 가려진 대기 산란량 = Sigma (구간별 AerialPerspective × (1 - 투과율))
-//        float3 GetCloudShadowedInScattering
-//        (
-//        Texture3D<float4> Volume, SamplerState LinearClamp, float2 UV, float3 Dir, float DistanceKm, float Jitter)
-//{
-//            float MarchKm = min(DistanceKm, CloudShadowShaftMaxDistanceKm);
-//            if (MarchKm <= 0.0)
-//                return 0.0;
+            float3 MultiScattering = SampleMultiScattering(MultiScatteringLut, LinearClampSampler, r, SunMu) * MultiScatteringFactor;
+        
+            float3 InScattering = SunIlluminance * (
+              SunTransmittance * GetCloudOcclusion(LinearClampSampler, SamplePos) * (Coefficients.RayleighScattering * PhaseR + Coefficients.MieScattering * PhaseM)
+           );
 
-//            float StepKm = MarchKm / kShaftStepCount;
-//            float3 Loss = 0.0;
-//            float3 Prev = 0.0;
-//            for (uint i = 0; i < kShaftStepCount; ++i)
-//            {
-//                float3 Next = SampleAerialPerspective(Volume, LinearClamp, UV, (i + 1) * StepKm).rgb;
-//                float3 PosKm = CameraPositionKm + Dir * ((i + Jitter) * StepKm);
-//                float3 r = float3(PosKm.x, length(PosKm) - BottomRadius, PosKm.z) * 1000.0;
-//                Loss += (Next - Prev) * (1.0 - GetCloudShadowTransmittance(CloudShadowMap, LinearClamp, r));
-//                Prev = Next;
-//            }
-//            return Loss;
-//        }
-//    }
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    int StepCount = max(1, (int) (DTid.z + 1) * 2);
+            float3 StepTransmittance = exp(-Coefficients.TotalExtinction * StepSize); //구간 투과율
+            Loss += Throughput * (InScattering - InScattering * StepTransmittance) / max(Coefficients.TotalExtinction, 1e-6);
+            Throughput *= StepTransmittance;
+        }
+        PrevKm = SliceKm;
+        AtmosphereShadowVolume[uint3(DTid.xy, z)] = float4(Loss, 0.0);
 
-    float3 Throughput;
-    float3 Luminance = IntegrateScatteredLuminanceLoss(TransmittanceLut, MultiScatteringLut, LinearClampSampler,
-        Origin, Dir, SunDirection, SunIlluminance, MultiScatteringFactor, StepCount,
-        MaxDistance, true, Throughput);
-
-    float Opacity = 1.0 - dot(Throughput, float3(1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0));
-    AtmosphereShadowVolume[DTid] = float4(Luminance, Opacity);
+    }
     
 }
