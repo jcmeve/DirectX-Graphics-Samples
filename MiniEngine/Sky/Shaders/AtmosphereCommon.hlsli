@@ -7,6 +7,8 @@ static const float kMultiScatteringLutSize = 32.0;
 static const float2 kSkyViewLutSize = float2(192.0, 108.0); //1920*1080
 static const float kAerialPerspectiveSliceCount = 32.0;
 static const float kAerialPerspectiveMaxDistanceKm = 128.0;
+static const float kAtmosphereShadowSliceCount = 32.0;
+static const float kAtmosphereShadowMaxDistanceKm = 128.0;
 static const float kInfiniteDistance = 1.0e9;
 
 cbuffer AtmosphereConstants : register(b0)
@@ -203,7 +205,9 @@ float3 IntegrateScatteredLuminance(Texture2D<float4> TransmittanceLut, Texture2D
         float PlanetShadow = (RaySphereNear(SamplePos, SunDir, BottomRadius) > 0.0) ? 0.0 : 1.0;//행성과 닿은 경우 태양 가시성 0
         float3 SunTransmittance = SampleTransmittance(TransmittanceLut, LinearClamp, r, SunMu) * PlanetShadow;
         if (bUseSunVisibility)
+        {
             SunTransmittance *= GetSunVisibility(SamplePos);
+        }
         
         float3 MultiScattering = SampleMultiScattering(MultiScatteringLut, LinearClamp, r, SunMu) * MultiScatteringFactor;
         
@@ -218,6 +222,9 @@ float3 IntegrateScatteredLuminance(Texture2D<float4> TransmittanceLut, Texture2D
 
     return Luminance;
 }
+
+
+
 
 //UV->Cos천정각,Cos태양죄우각
 void UvToSkyViewParams(float2 UV, float ViewHeight, out float ViewZenithCos, out float LightViewCos)
@@ -282,6 +289,20 @@ float4 SampleAerialPerspective(Texture3D<float4> Volume, SamplerState LinearClam
     float W = sqrt(Slice / kAerialPerspectiveSliceCount);
     return Volume.SampleLevel(LinearClamp, float3(UV, W), 0) * Weight;
 }
+
+float4 SampleAtmosphereShadow(Texture3D<float4> Volume, SamplerState LinearClamp, float2 UV, float DistanceKm)
+{
+    float Slice = DistanceKm / kAtmosphereShadowMaxDistanceKm * kAtmosphereShadowSliceCount;
+    float Weight = 1.0;
+    if (Slice < 0.5)
+    {
+        Weight = saturate(Slice * 2.0);
+        Slice = 0.5;
+    }
+    float W = sqrt(Slice / kAtmosphereShadowSliceCount);
+    return Volume.SampleLevel(LinearClamp, float3(UV, W), 0) * Weight;
+}
+
 
 //좌표기반 의사난수생성함수, 균일하고 성능이 좋다.
 float InterleavedGradientNoise(float2 Pixel, uint Frame)
