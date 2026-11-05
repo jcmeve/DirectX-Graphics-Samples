@@ -1,11 +1,17 @@
 #include "AtmosphereCommon.hlsli"
 #include "SkyViewCommon.hlsli"
 #include "CloudCommon.hlsli"
+#include "AtmosphereCloudShadow.hlsli"
 
 Texture2D<float4> TransmittanceLut : register(t0);
 Texture2D<float4> SkyViewLut : register(t1);
 Texture3D<float4> AerialPerspectiveVolume : register(t2);
 Texture2D<float> SceneDepth : register(t3);
+
+Texture2D<float4>   PreviusCloud : register(t8);
+RWTexture2D<float4> CurrentCloud : register(u0);
+Texture2D<float>    PreviusCloudDepth : register(t9);
+RWTexture2D<float>  CurrentCloudDepth : register(u1);
 
 static const float kPhaseForwardG = 0.8;
 static const float kPhaseBackwardG = -0.2;
@@ -140,6 +146,10 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     {
         // Aerial Perspective 
         float4 AerialPerspective = SampleAerialPerspective(AerialPerspectiveVolume, LinearClampSampler, UV, WeightedDistance / WeightSum * 0.001);
+
+        //구름 끼리의 그림자 도입 시 우선 적용 해봐야함
+        //AerialPerspective.rgb -= SampleAtmosphereShadow(AerialPerspectiveVolume, LinearClampSampler, UV, WeightedDistance / WeightSum * 0.001);
+        
         Luminance = Luminance * (1.0 - AerialPerspective.a) + AerialPerspective.rgb * Alpha;
     }
     

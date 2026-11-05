@@ -5,6 +5,7 @@
 
 cbuffer SkyViewConstants : register(b2)
 {
+    float4x4 PrevViewProj;
     float4x4 InvViewProj;
     
     float3 CameraPositionKm;

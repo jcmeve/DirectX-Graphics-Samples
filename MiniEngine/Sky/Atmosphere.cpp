@@ -54,6 +54,7 @@ namespace
 
     __declspec(align(16)) struct SkyViewConstants
     {
+        Math::Matrix4 PrevViewProj;
         Math::Matrix4 InvViewProj;
 
         float CameraPositionKm[3];      
@@ -128,9 +129,10 @@ namespace
 
     AtmosphereConstants s_Constants;
     SkyViewConstants s_LastViewConstants;
-
     CloudShadowConstants s_CloudShadowConstants;
     D3D12_CPU_DESCRIPTOR_HANDLE s_CloudShadowSRV;
+
+    Math::Matrix4 s_PrevViewProj;
 
     bool s_bTransmittanceDirty = true;
     bool s_bVolumeTestDirty = true;
@@ -179,6 +181,7 @@ namespace
         SkyViewConstants ViewConstants = {};
         //카메라에서 이동을 제거하고 해야 정밀도 보장됨. 카메라 Translate를 그대로 두고 역행렬 계산하게 되면 부동소수점 오차가 발생해서 제대로 된 렌더링이 불가능
         Math::Matrix4 ViewRotation(Camera.GetViewMatrix().Get3x3(), Math::Vector3(Math::kZero));
+        ViewConstants.PrevViewProj = s_PrevViewProj;
         ViewConstants.InvViewProj = Math::Invert(Camera.GetProjMatrix() * ViewRotation);
         ViewConstants.CameraPositionKm[0] = (float)CameraPos.GetX() * kWorldUnitsToKm;
         ViewConstants.CameraPositionKm[1] = s_Constants.BottomRadius + Math::Max(CameraHeightKm, 0.01f);
@@ -191,6 +194,9 @@ namespace
         ViewConstants.SunDiskIntensity = s_SunDiskIntensity;
         ViewConstants.MultiScatteringFactor = s_EnableMultiScattering ? 1.0f : 0.0f;
         ViewConstants.AerialPerspectiveWorldToKm = kWorldUnitsToKm * s_AerialPerspectiveDistanceScale;
+
+        s_PrevViewProj = ViewRotation;
+
         return ViewConstants;
     }
 

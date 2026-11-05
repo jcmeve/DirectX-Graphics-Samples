@@ -87,6 +87,9 @@ namespace
     ColorBuffer s_ShadowMap(Color(0.0f, 0.0f, 0.0f, 0.0f));
     CloudShadowConstants s_ShadowConstants = {};
 
+    ColorBuffer s_CloudHistory[2];
+    ColorBuffer s_CloudDepthHistory[2];
+
     TextureRef s_NoiseTexture; //128*128*128 노이즈 RGBA 각각
     TextureRef s_ModelingTexture; //R: Dimensional Profile, G: Detail Type, B: Density Scale 512*512*64  
     TextureRef s_FieldTexture; //R채널 512*512*64 SDF
@@ -210,8 +213,8 @@ void Clouds::Initialize(void)
     s_RootSig[kViewCBV].InitAsConstantBuffer(2);
     s_RootSig[kCloudCBV].InitAsConstantBuffer(3);
     s_RootSig[kCloudShadowCBV].InitAsConstantBuffer(4);
-    s_RootSig[kSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 8);
-    s_RootSig[kUAVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 0, 4);
+    s_RootSig[kSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 10);
+    s_RootSig[kUAVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 0, 6);
     s_RootSig.Finalize(L"Clouds");
 
     s_DebugViewVolumePSO.SetRootSignature(s_RootSig);
@@ -241,6 +244,10 @@ void Clouds::Initialize(void)
     s_ShadowMapPSO.Finalize();
 
     s_ShadowMap.Create(L"Cloud Shadow Map", kShadowMapSize, kShadowMapSize, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
+    s_CloudHistory[0].Create(L"CloudHistory 0", Graphics::g_DisplayWidth, Graphics::g_DisplayHeight, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
+    s_CloudHistory[1].Create(L"CloudHistory 1", Graphics::g_DisplayWidth, Graphics::g_DisplayHeight, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
+    s_CloudDepthHistory[0].Create(L"CloudDepthHistory 0", Graphics::g_DisplayWidth, Graphics::g_DisplayHeight, 1, DXGI_FORMAT_R16_FLOAT);
+    s_CloudDepthHistory[1].Create(L"CloudDepthHistory 1", Graphics::g_DisplayWidth, Graphics::g_DisplayHeight, 1, DXGI_FORMAT_R16_FLOAT);
 
     s_NoiseTexture = TextureManager::LoadDDSFromFile(kNoisePath);
     s_ModelingTexture = TextureManager::LoadDDSFromFile(kModelingPath);
@@ -256,6 +263,10 @@ void Clouds::Shutdown(void)
     s_ModelingTexture = nullptr;
     s_FieldTexture = nullptr;
     s_ShadowMap.Destroy();
+    s_CloudHistory[0].Destroy();
+    s_CloudHistory[1].Destroy();
+    s_CloudDepthHistory[0].Destroy();
+    s_CloudDepthHistory[1].Destroy();
 }
 
 void Clouds::Render(GraphicsContext& Context, const Math::Camera& Camera, const D3D12_VIEWPORT& Viewport, const D3D12_RECT& Scissor)
@@ -278,7 +289,33 @@ void Clouds::Render(GraphicsContext& Context, const Math::Camera& Camera, const 
 
     // t0~t2 Atmosphere에 바인딩 위임
     Atmosphere::BindSkyInputs(Context, kAtmosphereCBV, kViewCBV, kSRVs);
+
+    if ((uint32_t)Graphics::GetFrameCount() % 2) 
+    {
+        Context.TransitionResource(s_CloudHistory[0], kShaderResourceState);
+        Context.TransitionResource(s_CloudHistory[1], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+        Context.TransitionResource(s_CloudDepthHistory[0], kShaderResourceState);
+        Context.TransitionResource(s_CloudDepthHistory[1], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+        Context.SetDynamicDescriptor(kSRVs, 8, s_CloudHistory[0].GetSRV());
+        Context.SetDynamicDescriptor(kUAVs, 0, s_CloudHistory[1].GetUAV());
+        Context.SetDynamicDescriptor(kSRVs, 9, s_CloudDepthHistory[0].GetSRV());
+        Context.SetDynamicDescriptor(kUAVs, 1, s_CloudDepthHistory[1].GetUAV());
+    }
+    else
+    {
+        Context.TransitionResource(s_CloudHistory[1], kShaderResourceState);
+        Context.TransitionResource(s_CloudHistory[0], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+        Context.TransitionResource(s_CloudDepthHistory[1], kShaderResourceState);
+        Context.TransitionResource(s_CloudDepthHistory[0], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+        Context.SetDynamicDescriptor(kSRVs, 8, s_CloudHistory[1].GetSRV());
+        Context.SetDynamicDescriptor(kUAVs, 0, s_CloudHistory[0].GetUAV());
+        Context.SetDynamicDescriptor(kSRVs, 9, s_CloudDepthHistory[1].GetSRV());
+        Context.SetDynamicDescriptor(kUAVs, 1, s_CloudDepthHistory[0].GetUAV());
+    }
+
     Context.SetDynamicConstantBufferView(kCloudCBV, sizeof(Constants), &Constants);
+    
+
     Context.SetDynamicDescriptor(kSRVs, 3, g_SceneDepthBuffer.GetDepthSRV());
     Context.SetDynamicDescriptor(kSRVs, 4, s_NoiseTexture.GetSRV());
     Context.SetDynamicDescriptor(kSRVs, 5, s_ModelingTexture.GetSRV());
