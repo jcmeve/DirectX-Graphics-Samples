@@ -18,6 +18,9 @@ cbuffer SkyViewConstants : register(b2)
     float MultiScatteringFactor;
     float AerialPerspectiveWorldToKm;
     float SkyViewConstantsPad;
+    
+    float3 CameraDeltaMeters;
+    float SkyViewConstantsPad2;
 };
 
 

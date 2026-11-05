@@ -1,7 +1,6 @@
 #include "AtmosphereCommon.hlsli"
 #include "SkyViewCommon.hlsli"
 #include "CloudCommon.hlsli"
-#include "AtmosphereCloudShadow.hlsli"
 
 Texture2D<float4> TransmittanceLut : register(t0);
 Texture2D<float4> SkyViewLut : register(t1);
@@ -82,14 +81,17 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
 {
     float3 Dir = GetWorldViewDir(UV);
     float2 Hit = RayBoxIntersect(0.0, Dir, BoundsMin, BoundsMin + BoundsSize);
+
+    float3 P = Dir * PreviusCloudDepth.SampleLevel(LinearClampSampler, UV, 0) + CameraDeltaMeters;
+    float4 ClipPosition = mul(PrevViewProj,float4(P, 1.0));
     
-    float2 PreviusUV = mul(PrevViewProj,float4(GetWorldViewDir(UV), 0));
-    float PreviusDepth = PreviusCloudDepth[PreviusUV];
-        
-    if (PreviusCloud[PreviusUV].a > 0.1)
+    float2 PreviusUV = float2(ClipPosition.x / ClipPosition.w * 0.5 + 0.5, 0.5 - ClipPosition.y / ClipPosition.w * 0.5);
+    float PreviusDepth = PreviusCloudDepth.SampleLevel(LinearClampSampler, PreviusUV, 0);
+    float4 PreviusColor = PreviusCloud.SampleLevel(LinearClampSampler, PreviusUV, 0);
+    if (PreviusColor.a > 0.1)
     {
-        CurrentCloud[UV] = PreviusCloud[PreviusUV];
-        return CurrentCloud[UV];
+        CurrentCloud[Position.xy] = PreviusColor;
+        return PreviusColor;
     }
     
     //뎁스 버퍼로 길이 계산
@@ -162,6 +164,7 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
         Luminance = Luminance * (1.0 - AerialPerspective.a) + AerialPerspective.rgb * Alpha;
     }
     float4 ret = float4(Luminance, Alpha);
-    CurrentCloud[UV] = ret;
+    CurrentCloud[Position.xy] = ret;
+    CurrentCloudDepth[(uint2) Position.xy] = WeightSum > 0 ? WeightedDistance / WeightSum : 0;
     return ret;
 }
