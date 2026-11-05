@@ -200,9 +200,9 @@ namespace
         ViewConstants.MultiScatteringFactor = s_EnableMultiScattering ? 1.0f : 0.0f;
         ViewConstants.AerialPerspectiveWorldToKm = kWorldUnitsToKm * s_AerialPerspectiveDistanceScale;
         Math::Vector3 CameraDelta = CameraPos - s_PrevCameraPosition;
-        ViewConstants.CameraDeltaMeters[0] = CameraDelta.GetX() * 100.0f;
-        ViewConstants.CameraDeltaMeters[1] = CameraDelta.GetY() * 100.0f;
-        ViewConstants.CameraDeltaMeters[2] = CameraDelta.GetZ() * 100.0f;
+        ViewConstants.CameraDeltaMeters[0] = CameraDelta.GetX() * 0.01f;
+        ViewConstants.CameraDeltaMeters[1] = CameraDelta.GetY() * 0.01f;
+        ViewConstants.CameraDeltaMeters[2] = CameraDelta.GetZ() * 0.01f;
         s_PrevCameraPosition = CameraPos;
         s_PrevViewProj = CurrentViewProj;
 

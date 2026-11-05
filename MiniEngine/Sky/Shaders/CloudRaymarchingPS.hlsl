@@ -82,18 +82,23 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     float3 Dir = GetWorldViewDir(UV);
     float2 Hit = RayBoxIntersect(0.0, Dir, BoundsMin, BoundsMin + BoundsSize);
 
-    float3 P = Dir * PreviusCloudDepth.SampleLevel(LinearClampSampler, UV, 0) + CameraDeltaMeters;
-    float4 ClipPosition = mul(PrevViewProj,float4(P, 1.0));
+    float PreviusDepth = PreviusCloudDepth[Position.xy];
     
-    float2 PreviusUV = float2(ClipPosition.x / ClipPosition.w * 0.5 + 0.5, 0.5 - ClipPosition.y / ClipPosition.w * 0.5);
-    float PreviusDepth = PreviusCloudDepth.SampleLevel(LinearClampSampler, PreviusUV, 0);
-    float4 PreviusColor = PreviusCloud.SampleLevel(LinearClampSampler, PreviusUV, 0);
-    if (PreviusColor.a > 0.1)
+    float4 ClipPosition = (PreviusDepth > 0.0)
+    ? mul(PrevViewProj, float4(Dir * PreviusCloudDepth.SampleLevel(LinearClampSampler, UV, 0) + CameraDeltaMeters, 1.0))
+    : mul(PrevViewProj, float4(Dir , 0.0));
+    
+    if ((Position.x * 15 + Position.y) % 16 != 0)
     {
+     
+        float2 PreviusUV = float2(ClipPosition.x / ClipPosition.w * 0.5 + 0.5, 0.5 - ClipPosition.y / ClipPosition.w * 0.5);
+        float4 PreviusColor = PreviusCloud.SampleLevel(LinearClampSampler, PreviusUV, 0);
+
         CurrentCloud[Position.xy] = PreviusColor;
+        CurrentCloudDepth[Position.xy] = length(Dir * PreviusDepth + CameraDeltaMeters);
         return PreviusColor;
+       
     }
-    
     //뎁스 버퍼로 길이 계산
     float SceneDistance = GetSceneViewDistance(UV, SceneDepth[uint2(Position.xy)]) * WorldToMeters;
     Hit.y = min(Hit.y, SceneDistance);
