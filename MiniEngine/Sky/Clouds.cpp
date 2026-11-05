@@ -244,10 +244,10 @@ void Clouds::Initialize(void)
     s_ShadowMapPSO.Finalize();
 
     s_ShadowMap.Create(L"Cloud Shadow Map", kShadowMapSize, kShadowMapSize, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
-    s_CloudHistory[0].Create(L"CloudHistory 0", Graphics::g_DisplayWidth, Graphics::g_DisplayHeight, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
-    s_CloudHistory[1].Create(L"CloudHistory 1", Graphics::g_DisplayWidth, Graphics::g_DisplayHeight, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
-    s_CloudDepthHistory[0].Create(L"CloudDepthHistory 0", Graphics::g_DisplayWidth, Graphics::g_DisplayHeight, 1, DXGI_FORMAT_R16_FLOAT);
-    s_CloudDepthHistory[1].Create(L"CloudDepthHistory 1", Graphics::g_DisplayWidth, Graphics::g_DisplayHeight, 1, DXGI_FORMAT_R16_FLOAT);
+    s_CloudHistory[0].Create(L"CloudHistory 0", Graphics::g_SceneColorBuffer.GetWidth(), Graphics::g_SceneColorBuffer.GetHeight(), 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
+    s_CloudHistory[1].Create(L"CloudHistory 1", Graphics::g_SceneColorBuffer.GetWidth(), Graphics::g_SceneColorBuffer.GetHeight(), 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
+    s_CloudDepthHistory[0].Create(L"CloudDepthHistory 0", Graphics::g_SceneColorBuffer.GetWidth(), Graphics::g_SceneColorBuffer.GetHeight(), 1, DXGI_FORMAT_R16_FLOAT);
+    s_CloudDepthHistory[1].Create(L"CloudDepthHistory 1", Graphics::g_SceneColorBuffer.GetWidth(), Graphics::g_SceneColorBuffer.GetHeight(), 1, DXGI_FORMAT_R16_FLOAT);
 
     s_NoiseTexture = TextureManager::LoadDDSFromFile(kNoisePath);
     s_ModelingTexture = TextureManager::LoadDDSFromFile(kModelingPath);

@@ -79,31 +79,47 @@ float3 GetSunTransmittance(float3 RelPos)
 
 float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
 {
-    float3 Dir = GetWorldViewDir(UV);
+    uint2 Pixel = uint2(Position.xy);
+    
+    uint2 TargetSize;
+    PreviusCloud.GetDimensions(TargetSize.x, TargetSize.y);
+    float2 _UV = Position.xy / TargetSize;
+    
+    float3 Dir = GetWorldViewDir(_UV);
     float2 Hit = RayBoxIntersect(0.0, Dir, BoundsMin, BoundsMin + BoundsSize);
 
-    float PreviusDepth = PreviusCloudDepth[Position.xy];
-    
-    float4 ClipPosition = (PreviusDepth > 0.0)
-    ? mul(PrevViewProj, float4(Dir * PreviusCloudDepth.SampleLevel(LinearClampSampler, UV, 0) + CameraDeltaMeters, 1.0))
-    : mul(PrevViewProj, float4(Dir , 0.0));
-    
-    if ((Position.x * 15 + Position.y) % 16 != 0)
-    {
-     
-        float2 PreviusUV = float2(ClipPosition.x / ClipPosition.w * 0.5 + 0.5, 0.5 - ClipPosition.y / ClipPosition.w * 0.5);
-        float4 PreviusColor = PreviusCloud.SampleLevel(LinearClampSampler, PreviusUV, 0);
-
-        CurrentCloud[Position.xy] = PreviusColor;
-        CurrentCloudDepth[Position.xy] = length(Dir * PreviusDepth + CameraDeltaMeters);
-        return PreviusColor;
-       
-    }
     //뎁스 버퍼로 길이 계산
-    float SceneDistance = GetSceneViewDistance(UV, SceneDepth[uint2(Position.xy)]) * WorldToMeters;
+    float SceneDistance = GetSceneViewDistance(_UV, SceneDepth[uint2(Position.xy)]) * WorldToMeters;
     Hit.y = min(Hit.y, SceneDistance);
     if (Hit.x >= Hit.y)
+    {
+        CurrentCloud[Pixel] = 0;
+        CurrentCloudDepth[Pixel] = 0;
         return 0.0;
+    }
+    
+    float PreviusDepth = PreviusCloudDepth[Pixel];//현재 프레임 기반 추정치
+    
+    float4 ClipPosition = (PreviusDepth > 0.0)
+    ? mul(PrevViewProj, float4(Dir * PreviusDepth + CameraDeltaMeters, 1.0))
+    : mul(PrevViewProj, float4(Dir , 0.0));
+    float2 PreviusUV = float2(ClipPosition.x / ClipPosition.w * 0.5 + 0.5, 0.5 - ClipPosition.y / ClipPosition.w * 0.5);
+    
+    if ((uint(Position.y) % 4 + uint(Position.x)) % 4 != FrameIndex % 4)
+    {
+        uint2 PreviusPixel = min(uint2(PreviusUV * TargetSize), TargetSize - 1);
+        
+        float4 PreviusColor = PreviusCloud[PreviusPixel];
+        float PreviusDepth = PreviusCloudDepth[PreviusPixel];
+
+        CurrentCloud[Pixel] = PreviusColor;
+        float NewDepth = length((CameraPositionKm / 1000 + Dir * PreviusDepth) - (CameraPositionKm / 1000 - CameraDeltaMeters));
+        CurrentCloudDepth[Pixel] = PreviusDepth - ((PreviusDepth > 0) ? dot(Dir, CameraDeltaMeters) : 0);
+        CurrentCloudDepth[Pixel] = NewDepth;
+        
+        return PreviusColor;
+    }
+
 
     // 천정 방향 하늘 휘도를 환경광으로 
     float ViewHeight = length(CameraPositionKm);
@@ -169,7 +185,7 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
         Luminance = Luminance * (1.0 - AerialPerspective.a) + AerialPerspective.rgb * Alpha;
     }
     float4 ret = float4(Luminance, Alpha);
-    CurrentCloud[Position.xy] = ret;
-    CurrentCloudDepth[(uint2) Position.xy] = WeightSum > 0 ? WeightedDistance / WeightSum : 0;
+    CurrentCloud[Pixel] = ret;
+    CurrentCloudDepth[(uint2) Pixel] = WeightSum > 0 ? WeightedDistance / WeightSum : 0;
     return ret;
 }

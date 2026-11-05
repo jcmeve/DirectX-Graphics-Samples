@@ -27,7 +27,7 @@ SamplerState LinearWrapSampler : register(s1);
 static const float kSdfMinMeters = -256.0;
 static const float kSdfMaxMeters = 4096.0;
 static const float kNoiseFrequency = 0.01; // 노이즈 100m 타일
-static const float kHFDetailDistance = 15000.0;
+static const float kHFDetailDistance = 150.0;
 static const float kNoiseTexelMeters = 1.0 / (kNoiseFrequency * 128.0);
 static const float kCloudEpsilon = 1e-4;
 
