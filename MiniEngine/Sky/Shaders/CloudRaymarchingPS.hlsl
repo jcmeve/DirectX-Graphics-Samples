@@ -82,7 +82,16 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
 {
     float3 Dir = GetWorldViewDir(UV);
     float2 Hit = RayBoxIntersect(0.0, Dir, BoundsMin, BoundsMin + BoundsSize);
-
+    
+    float2 PreviusUV = mul(PrevViewProj,float4(GetWorldViewDir(UV), 0));
+    float PreviusDepth = PreviusCloudDepth[PreviusUV];
+        
+    if (PreviusCloud[PreviusUV].a > 0.1)
+    {
+        CurrentCloud[UV] = PreviusCloud[PreviusUV];
+        return CurrentCloud[UV];
+    }
+    
     //뎁스 버퍼로 길이 계산
     float SceneDistance = GetSceneViewDistance(UV, SceneDepth[uint2(Position.xy)]) * WorldToMeters;
     Hit.y = min(Hit.y, SceneDistance);
@@ -152,6 +161,7 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
         
         Luminance = Luminance * (1.0 - AerialPerspective.a) + AerialPerspective.rgb * Alpha;
     }
-    
-    return float4(Luminance, Alpha);
+    float4 ret = float4(Luminance, Alpha);
+    CurrentCloud[UV] = ret;
+    return ret;
 }
