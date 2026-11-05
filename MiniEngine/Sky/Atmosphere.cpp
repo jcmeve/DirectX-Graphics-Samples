@@ -89,9 +89,9 @@ namespace
     const uint32_t kDebugViewScale = 3;
     const uint32_t kDebugViewMargin = 16;
     const uint32_t kAerialPerspectiveSize = 32;
-    const uint32_t kAtmosphereShadowWidth = 192;
-    const uint32_t kAtmosphereShadowHeight = 108;
-    const uint32_t kAtmosphereShadowDepth = 32;
+    const uint32_t kAtmosphereShadowWidth = 192*4;
+    const uint32_t kAtmosphereShadowHeight = 108*4;
+    const uint32_t kAtmosphereShadowDepth = 32*2;
 
     enum SkyMode
     {
@@ -446,6 +446,7 @@ void Atmosphere::RenderSky(
         Context.SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
         Context.TransitionResource(s_AerialPerspectiveVolume, kShaderResourceState);
+        Context.TransitionResource(s_AtmosphereShadowVolume, kShaderResourceState);
         Context.TransitionResource(g_SceneDepthBuffer, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
         Context.TransitionResource(g_SceneColorBuffer, D3D12_RESOURCE_STATE_RENDER_TARGET, true);
         Context.SetRenderTarget(g_SceneColorBuffer.GetRTV());
@@ -455,6 +456,7 @@ void Atmosphere::RenderSky(
         Context.SetDynamicConstantBufferView(kViewCBV, sizeof(ViewConstants), &ViewConstants);
         Context.SetDynamicDescriptor(kSRVs, 3, s_AerialPerspectiveVolume.GetSRV());
         Context.SetDynamicDescriptor(kSRVs, 4, g_SceneDepthBuffer.GetDepthSRV());
+        Context.SetDynamicDescriptor(kSRVs, 7, s_AtmosphereShadowVolume.GetSRV());
         BindCloudShadow(Context);
         Context.Draw(3);
     }

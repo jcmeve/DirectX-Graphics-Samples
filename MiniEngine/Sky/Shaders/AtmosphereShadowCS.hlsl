@@ -26,8 +26,8 @@ void main( uint3 DTid : SV_DispatchThreadID )
         return;
     }
     
-    int StepCount = 32;
-    float Jitter = InterleavedGradientNoise(UV.xy, CloudShadowFrameIndex);
+    int StepCount = 32*2;
+    float Jitter = InterleavedGradientNoise(DTid.xy, CloudShadowFrameIndex);
 
     float3 Throughput;
     
@@ -36,7 +36,7 @@ void main( uint3 DTid : SV_DispatchThreadID )
     float TopDistance = RaySphereFar(Origin, Dir, TopRadius);
     float GroundDistance = RaySphereNear(Origin, Dir, BottomRadius);
     float RayLength = (GroundDistance > 0.0) ? GroundDistance : TopDistance;
-    RayLength = min(RayLength, 16);
+    RayLength = 16; //min(RayLength, 16);
     
     float CosTheta = dot(Dir, SunDirection);
     float PhaseR = RayleighPhase(CosTheta);
@@ -47,7 +47,7 @@ void main( uint3 DTid : SV_DispatchThreadID )
 
     for (int i = 0; i < StepCount; ++i)
     {
-        float3 SamplePos = Origin + Dir * ((i + 0.5) * StepSize);
+        float3 SamplePos = Origin + Dir * ((i + Jitter) * StepSize);
         float r = length(SamplePos);
         OpticalCoefficients Coefficients = GetOpticalCoefficients(r - BottomRadius);
 
