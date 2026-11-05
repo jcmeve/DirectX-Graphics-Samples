@@ -32,7 +32,7 @@ float3 GetCloudShadowedInScattering(Texture3D<float4> Volume, SamplerState Linea
 float3 IntegrateScatteredLuminanceLoss(Texture2D<float4> TransmittanceLut, Texture2D<float4> MultiScatteringLut, 
     SamplerState LinearClamp, float3 Origin, float3 Dir, float3 SunDir,
     float SunIlluminance, float MultiScatteringFactor, int StepCount,
-    float MaxDistance, bool bUseSunVisibility, out float3 Throughput)
+    float MaxDistance, bool bUseSunVisibility, out float3 Throughput, float Jitter)
 {
     Throughput = 1.0;
 
@@ -64,14 +64,20 @@ float3 IntegrateScatteredLuminanceLoss(Texture2D<float4> TransmittanceLut, Textu
         {
             float3 PosKm = SamplePos;//CameraPositionKm + Dir * ((i + Jitter) * StepKm);
             float3 PosMeter = float3(PosKm.x, length(PosKm) - BottomRadius, PosKm.z) * 1000.0;
-            SunTransmittance *= 1 - GetCloudShadowTransmittance(CloudShadowMap, LinearClamp, PosMeter);
+            float CloudShadowTransmittance = GetCloudShadowTransmittance(CloudShadowMap, LinearClamp, PosMeter);
+            if (CloudShadowTransmittance < 0.9)
+            {
+                return 1;
+                CloudShadowTransmittance = 0;
+            }
+            SunTransmittance *= 1 - CloudShadowTransmittance;
         }
         
         float3 MultiScattering = SampleMultiScattering(MultiScatteringLut, LinearClamp, r, SunMu) * MultiScatteringFactor;
         
         float3 InScattering = SunIlluminance * (
-              SunTransmittance * (Coefficients.RayleighScattering * PhaseR + Coefficients.MieScattering * PhaseM)
-            + MultiScattering * (Coefficients.RayleighScattering + Coefficients.MieScattering)); //
+              SunTransmittance * (Coefficients.RayleighScattering * PhaseR + Coefficients.MieScattering * PhaseM));
+//            + MultiScattering * (Coefficients.RayleighScattering + Coefficients.MieScattering)); //
 
         float3 StepTransmittance = exp(-Coefficients.TotalExtinction * StepSize); //구간 투과율
         Luminance += Throughput * (InScattering - InScattering * StepTransmittance) / max(Coefficients.TotalExtinction, 1e-6);

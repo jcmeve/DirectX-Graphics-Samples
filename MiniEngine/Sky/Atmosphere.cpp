@@ -476,7 +476,13 @@ void Atmosphere::RenderSky(
         Compute.SetDynamicDescriptor(kSRVs, 0, s_TransmittanceLut.GetSRV());
         Compute.SetDynamicDescriptor(kSRVs, 1, s_MultiScatteringLut.GetSRV());
         Compute.SetDynamicDescriptor(kUAVs, 0, s_AtmosphereShadowVolume.GetUAV());
-        Compute.Dispatch3D(kAtmosphereShadowWidth, kAtmosphereShadowHeight, kAtmosphereShadowDepth, 8, 8, 1);
+        CloudShadowConstants Constants = s_CloudShadowConstants;
+        if (!s_EnableAerialPerspective)
+            Constants.ShaftMaxDistanceKm = 0.0f;
+
+        Compute.SetDynamicConstantBufferView(kCloudShadowCBV, sizeof(Constants), &Constants);
+        Compute.SetDynamicDescriptor(kSRVs, 5, s_CloudShadowSRV);
+        Compute.Dispatch2D(kAtmosphereShadowWidth, kAtmosphereShadowHeight, 8, 8);
 
         Compute.TransitionResource(s_AtmosphereShadowVolume, kShaderResourceState);
 
