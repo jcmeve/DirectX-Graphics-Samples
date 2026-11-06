@@ -106,7 +106,7 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     float2 PreviusUV = float2(ClipPosition.x / ClipPosition.w * 0.5 + 0.5, 0.5 - ClipPosition.y / ClipPosition.w * 0.5);
     
     if (
-        ((uint(Position.y) % 4 + uint(Position.x)) % 4 != FrameIndex % 4)
+        ((uint(Position.y) % 16 + uint(Position.x)) % 16 != FrameIndex % 16)
         &&ClipPosition.w>0.0 && all(PreviusUV>=0.0)&&all(PreviusUV<=1.0)//화면 밖 시 갱신    
         )
     {
@@ -115,15 +115,17 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
         float4 PreviusColor = PreviusCloud[PreviusPixel];
         float PreviusDepth = PreviusCloudDepth[PreviusPixel];
 
-        //float NewDepth = PreviusDepth > 0.0 ? max(PreviusDepth - dot(Dir, CameraDeltaMeters), 0.001) : 0.0;
         
         float CameraDeltaLength = length(CameraDeltaMeters);
-        float CosTheta = dot(CameraDeltaMeters / CameraDeltaLength, Dir);
+        float CosThetaXCameraDeltaLength = dot(CameraDeltaMeters, Dir);
 
-        float NewDepth = -CameraDeltaLength * CosTheta + (CosTheta > 0 ? 1.0 : -1.0) * sqrt((CosTheta * CosTheta - 1) * CameraDeltaLength * CameraDeltaLength + PreviusDepth);
+        //정확한 길이 계산
+        float NewDepth = -CosThetaXCameraDeltaLength + sqrt(CosThetaXCameraDeltaLength * CosThetaXCameraDeltaLength - CameraDeltaLength * CameraDeltaLength + PreviusDepth * PreviusDepth);
+        //근사
+        //float NewDepth = PreviusDepth - dot(Dir, CameraDeltaMeters);
         
         CurrentCloud[Pixel] = PreviusColor;
-        CurrentCloudDepth[Pixel] = NewDepth;
+        CurrentCloudDepth[Pixel] = PreviusDepth > 0.0 ? max(NewDepth, 0.001) : 0.0;
         return PreviusColor;
     }
 
