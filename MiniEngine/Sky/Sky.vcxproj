@@ -54,7 +54,10 @@
     <FxCompile Include="Shaders\AtmosphereTransmittanceLutCS.hlsl">
       <ShaderType>Compute</ShaderType>
     </FxCompile>
-    <FxCompile Include="Shaders\CloudRaymarchingPS.hlsl">
+    <FxCompile Include="Shaders\CloudAmortizationPS.hlsl">
+      <ShaderType>Pixel</ShaderType>
+    </FxCompile>
+    <FxCompile Include="Shaders\CloudReprojectionPS.hlsl">
       <ShaderType>Pixel</ShaderType>
     </FxCompile>
     <FxCompile Include="Shaders\CloudShadowCS.hlsl" />

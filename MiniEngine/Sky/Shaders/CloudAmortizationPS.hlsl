@@ -1,4 +1,3 @@
-#include "AtmosphereCommon.hlsli"
 #include "SkyViewCommon.hlsli"
 #include "CloudCommon.hlsli"
 
@@ -7,10 +6,11 @@ Texture2D<float4> SkyViewLut : register(t1);
 Texture3D<float4> AerialPerspectiveVolume : register(t2);
 Texture2D<float> SceneDepth : register(t3);
 
-Texture2D<float4>   PreviusCloud : register(t8);
-RWTexture2D<float4> CurrentCloud : register(u0);
-Texture2D<float>    PreviusCloudDepth : register(t9);
-RWTexture2D<float>  CurrentCloudDepth : register(u1);
+struct PS_OUT
+{
+    float4 Color : SV_Target0;
+    float Depth : SV_Target1;
+};
 
 static const float kPhaseForwardG = 0.8;
 static const float kPhaseBackwardG = -0.2;
@@ -77,13 +77,15 @@ float3 GetSunTransmittance(float3 RelPos)
     return SampleTransmittance(TransmittanceLut, LinearClampSampler, r, SunMu) * PlanetShadow;
 }
 
-float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
+PS_OUT main(float4 Position : SV_Position, float2 UV : TEXCOORD0)
 {
+    PS_OUT Ret;
+    Ret.Color = 0.0;
+    Ret.Depth = 0.0;
     uint2 Pixel = uint2(Position.xy);
     
-    uint2 TargetSize;
-    PreviusCloud.GetDimensions(TargetSize.x, TargetSize.y);
-    float2 _UV = Position.xy / TargetSize;
+    //갱신대상 UV를 특정해야함
+    float2 _UV = Position.xy; // / TargetSize;
     
     float3 Dir = GetWorldViewDir(_UV);
     float2 Hit = RayBoxIntersect(0.0, Dir, BoundsMin, BoundsMin + BoundsSize);
@@ -93,42 +95,9 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     Hit.y = min(Hit.y, SceneDistance);
     if (Hit.x >= Hit.y)
     {
-        CurrentCloud[Pixel] = 0;
-        CurrentCloudDepth[Pixel] = 0;
-        return 0.0;
+        return Ret;
     }
-    
-    float ApproximatePreviusDepth = PreviusCloudDepth[Pixel]; //현재 프레임 기반 추정치
-    
-    float4 ClipPosition = (ApproximatePreviusDepth > 0.0)
-    ? mul(PrevViewProj, float4(Dir * ApproximatePreviusDepth + CameraDeltaMeters, 1.0))
-    : mul(PrevViewProj, float4(Dir , 0.0));
-    float2 PreviusUV = float2(ClipPosition.x / ClipPosition.w * 0.5 + 0.5, 0.5 - ClipPosition.y / ClipPosition.w * 0.5);
-    
-    if (
-        ((uint(Position.y) % 16 + uint(Position.x)) % 16 != FrameIndex % 16)
-        &&ClipPosition.w>0.0 && all(PreviusUV>=0.0)&&all(PreviusUV<=1.0)//화면 밖 시 갱신    
-        )
-    {
-        uint2 PreviusPixel = min(uint2(PreviusUV * TargetSize), TargetSize - 1);
-        
-        float4 PreviusColor = PreviusCloud[PreviusPixel];
-        float PreviusDepth = PreviusCloudDepth[PreviusPixel];
-
-        
-        float CameraDeltaLength = length(CameraDeltaMeters);
-        float CosThetaXCameraDeltaLength = dot(CameraDeltaMeters, Dir);
-
-        //정확한 길이 계산
-        float NewDepth = -CosThetaXCameraDeltaLength + sqrt(CosThetaXCameraDeltaLength * CosThetaXCameraDeltaLength - CameraDeltaLength * CameraDeltaLength + PreviusDepth * PreviusDepth);
-        //근사
-        //float NewDepth = PreviusDepth - dot(Dir, CameraDeltaMeters);
-        
-        CurrentCloud[Pixel] = PreviusColor;
-        CurrentCloudDepth[Pixel] = PreviusDepth > 0.0 ? max(NewDepth, 0.001) : 0.0;
-        return PreviusColor;
-    }
-
+ 
 
     // 천정 방향 하늘 휘도를 환경광으로 
     float ViewHeight = length(CameraPositionKm);
@@ -144,7 +113,7 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     
     float LightJitter = InterleavedGradientNoise(Position.xy + kLightJitterPixelOffset, FrameIndex);
     
-    float t = Hit.x +InterleavedGradientNoise(Position.xy, FrameIndex) * max(1.0, sqrt(Hit.x) * StepScale);
+    float t = Hit.x + InterleavedGradientNoise(Position.xy, FrameIndex) * max(1.0, sqrt(Hit.x) * StepScale);
     for (uint i = 0; i < MaxSteps && t < Hit.y; ++i)
     {
         float3 RelPos = Dir * t;
@@ -193,8 +162,8 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
         
         Luminance = Luminance * (1.0 - AerialPerspective.a) + AerialPerspective.rgb * Alpha;
     }
-    float4 ret = float4(Luminance, Alpha);
-    CurrentCloud[Pixel] = ret;
-    CurrentCloudDepth[(uint2) Pixel] = WeightSum > 0 ? WeightedDistance / WeightSum : 0;
-    return ret;
+    Ret.Color = float4(Luminance, Alpha);
+    Ret.Depth = WeightSum > 0 ? WeightedDistance / WeightSum : 0;
+    
+    return Ret;
 }

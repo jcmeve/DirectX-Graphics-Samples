@@ -30,6 +30,7 @@ static const float kNoiseFrequency = 0.01; // 노이즈 100m 타일
 static const float kHFDetailDistance = 150.0;
 static const float kNoiseTexelMeters = 1.0 / (kNoiseFrequency * 128.0);
 static const float kCloudEpsilon = 1e-4;
+static const uint kAmortizationSize = 4; //한 축
 
 float GetNoiseMipFromFootprint(float FootprintMeters)
 {
