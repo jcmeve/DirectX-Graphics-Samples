@@ -50,15 +50,13 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     float2 PreviusUV = float2(ClipPosition.x / ClipPosition.w * 0.5 + 0.5, 0.5 - ClipPosition.y / ClipPosition.w * 0.5);
     
     if (
-        ((uint(Position.y) % kAmortizationSize * kAmortizationSize + uint(Position.x)) % kAmortizationSize * kAmortizationSize != FrameIndex % kAmortizationSize * kAmortizationSize)
-        &&ClipPosition.w>0.0 && all(PreviusUV>=0.0)&&all(PreviusUV<=1.0)//화면 밖 시 갱신    
+        !all((Pixel%kAmortizationSize) == GetAmortizationOffset(FrameIndex))
+        && ClipPosition.w > 0.0 && all(PreviusUV >= 0.0) && all(PreviusUV <= 1.0)//화면 밖 시 갱신    
         )
     {
         uint2 PreviusPixel = min(uint2(PreviusUV * TargetSize), TargetSize - 1);
-        
         float4 PreviusColor = PreviusCloud[PreviusPixel];
         float PreviusDepth = PreviusCloudDepth[PreviusPixel];
-
         
         float CameraDeltaLength = length(CameraDeltaMeters);
         float CosThetaXCameraDeltaLength = dot(CameraDeltaMeters, Dir);
@@ -73,8 +71,12 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
         return PreviusColor;
     }
 
-    float4 ret = float4(Luminance, Alpha);
-    CurrentCloud[Pixel] = ret;
-    CurrentCloudDepth[(uint2) Pixel] = WeightSum > 0 ? WeightedDistance / WeightSum : 0;
-    return ret;
+    uint2 LowSize;
+    CloudRenderTarget.GetDimensions(LowSize.x, LowSize.y);
+    uint2 LowPixel = min(Pixel / kAmortizationSize, LowSize - 1);
+    
+    float4 Color = CloudRenderTarget[LowPixel];
+    CurrentCloud[Pixel] = Color;
+    CurrentCloudDepth[Pixel] = CloudDepthRenderTarget[LowPixel];
+    return Color;
 }

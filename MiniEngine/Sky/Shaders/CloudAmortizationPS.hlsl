@@ -82,16 +82,19 @@ PS_OUT main(float4 Position : SV_Position, float2 UV : TEXCOORD0)
     PS_OUT Ret;
     Ret.Color = 0.0;
     Ret.Depth = 0.0;
-    uint2 Pixel = uint2(Position.xy);
     
-    //갱신대상 UV를 특정해야함
-    float2 _UV = Position.xy; // / TargetSize;
+    //현재 이 픽셀이 원본의 어떤 곳인지 계산
+    uint2 FullSize;
+    SceneDepth.GetDimensions(FullSize.x, FullSize.y);
+  
+    uint2 Pixel = min(uint2(Position.xy) * kAmortizationSize + GetAmortizationOffset(FrameIndex), FullSize - 1);
+    float2 _UV = (Pixel + 0.5)/FullSize;
     
     float3 Dir = GetWorldViewDir(_UV);
     float2 Hit = RayBoxIntersect(0.0, Dir, BoundsMin, BoundsMin + BoundsSize);
 
     //뎁스 버퍼로 길이 계산
-    float SceneDistance = GetSceneViewDistance(_UV, SceneDepth[uint2(Position.xy)]) * WorldToMeters;
+    float SceneDistance = GetSceneViewDistance(_UV, SceneDepth[Pixel]) * WorldToMeters;
     Hit.y = min(Hit.y, SceneDistance);
     if (Hit.x >= Hit.y)
     {
@@ -111,9 +114,9 @@ PS_OUT main(float4 Position : SV_Position, float2 UV : TEXCOORD0)
     float WeightedDistance = 0.0;
     float WeightSum = 0.0;
     
-    float LightJitter = InterleavedGradientNoise(Position.xy + kLightJitterPixelOffset, FrameIndex);
+    float LightJitter = InterleavedGradientNoise(Pixel + kLightJitterPixelOffset, FrameIndex);
     
-    float t = Hit.x + InterleavedGradientNoise(Position.xy, FrameIndex) * max(1.0, sqrt(Hit.x) * StepScale);
+    float t = Hit.x + InterleavedGradientNoise(Pixel, FrameIndex) * max(1.0, sqrt(Hit.x) * StepScale);
     for (uint i = 0; i < MaxSteps && t < Hit.y; ++i)
     {
         float3 RelPos = Dir * t;
@@ -155,10 +158,10 @@ PS_OUT main(float4 Position : SV_Position, float2 UV : TEXCOORD0)
     if (WeightSum > 0.0)
     {
         // Aerial Perspective 
-        float4 AerialPerspective = SampleAerialPerspective(AerialPerspectiveVolume, LinearClampSampler, UV, WeightedDistance / WeightSum * 0.001);
+        float4 AerialPerspective = SampleAerialPerspective(AerialPerspectiveVolume, LinearClampSampler, _UV, WeightedDistance / WeightSum * 0.001);
 
         //구름 끼리의 그림자 도입 시 우선 적용 해봐야함
-        //AerialPerspective.rgb -= SampleAtmosphereShadow(AerialPerspectiveVolume, LinearClampSampler, UV, WeightedDistance / WeightSum * 0.001);
+        //AerialPerspective.rgb -= SampleAtmosphereShadow(AerialPerspectiveVolume, LinearClampSampler, _UV, WeightedDistance / WeightSum * 0.001);
         
         Luminance = Luminance * (1.0 - AerialPerspective.a) + AerialPerspective.rgb * Alpha;
     }

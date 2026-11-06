@@ -251,7 +251,8 @@ void Clouds::Initialize(void)
     s_CloudAmortizationPSO.SetDepthStencilState(DepthStateDisabled);
     s_CloudAmortizationPSO.SetInputLayout(0, nullptr);
     s_CloudAmortizationPSO.SetPrimitiveTopologyType(D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE);
-    s_CloudAmortizationPSO.SetRenderTargetFormat(g_SceneColorBuffer.GetFormat(), DXGI_FORMAT_UNKNOWN);
+    const DXGI_FORMAT AmortizationFormat[] = { DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R16_FLOAT };
+    s_CloudAmortizationPSO.SetRenderTargetFormats(2, AmortizationFormat, DXGI_FORMAT_UNKNOWN);
     s_CloudAmortizationPSO.SetVertexShader(g_pSkyFullscreenVS, sizeof(g_pSkyFullscreenVS));
     s_CloudAmortizationPSO.SetPixelShader(g_pCloudAmortizationPS, sizeof(g_pCloudAmortizationPS));
     s_CloudAmortizationPSO.Finalize();
@@ -267,8 +268,11 @@ void Clouds::Initialize(void)
     s_CloudHistory[1].Create(L"CloudHistory 1", Graphics::g_SceneColorBuffer.GetWidth(), Graphics::g_SceneColorBuffer.GetHeight(), 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
     s_CloudDepthHistory[0].Create(L"CloudDepthHistory 0", Graphics::g_SceneColorBuffer.GetWidth(), Graphics::g_SceneColorBuffer.GetHeight(), 1, DXGI_FORMAT_R16_FLOAT);
     s_CloudDepthHistory[1].Create(L"CloudDepthHistory 1", Graphics::g_SceneColorBuffer.GetWidth(), Graphics::g_SceneColorBuffer.GetHeight(), 1, DXGI_FORMAT_R16_FLOAT);
-    s_CloudRenderTarget.Create(L"CloudRenderTarget", Graphics::g_SceneColorBuffer.GetWidth()/ kAmortizationSize, Graphics::g_SceneColorBuffer.GetHeight()/ kAmortizationSize, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
-    s_CloudDepthRenderTarget.Create(L"CloudDepthRenderTarget", Graphics::g_SceneColorBuffer.GetWidth()/ kAmortizationSize, Graphics::g_SceneColorBuffer.GetHeight()/ kAmortizationSize, 1, DXGI_FORMAT_R16_FLOAT);
+
+    const uint32_t CloudRenderTargetWidth = (Graphics::g_SceneColorBuffer.GetWidth() + kAmortizationSize - 1) / kAmortizationSize;
+    const uint32_t CloudRenderTargetHeight = (Graphics::g_SceneColorBuffer.GetHeight() + kAmortizationSize - 1) / kAmortizationSize;
+    s_CloudRenderTarget.Create(L"CloudRenderTarget", CloudRenderTargetWidth, CloudRenderTargetHeight, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
+    s_CloudDepthRenderTarget.Create(L"CloudDepthRenderTarget", CloudRenderTargetWidth, CloudRenderTargetHeight, 1, DXGI_FORMAT_R16_FLOAT);
 
     s_NoiseTexture = TextureManager::LoadDDSFromFile(kNoisePath);
     s_ModelingTexture = TextureManager::LoadDDSFromFile(kModelingPath);
@@ -316,7 +320,7 @@ void Clouds::Render(GraphicsContext& Context, const Math::Camera& Camera, const 
 
         const D3D12_CPU_DESCRIPTOR_HANDLE RTVs[] = { s_CloudRenderTarget.GetRTV(),s_CloudDepthRenderTarget.GetRTV()};
         Context.SetRenderTargets(2, RTVs);
-        Context.SetViewportAndScissor(Viewport, Scissor);
+        Context.SetViewportAndScissor(0, 0, s_CloudRenderTarget.GetWidth(), s_CloudRenderTarget.GetHeight());
         
         Atmosphere::BindSkyInputs(Context, kAtmosphereCBV, kViewCBV, kSRVs);
         Context.SetDynamicDescriptor(kSRVs, 3, g_SceneDepthBuffer.GetDepthSRV());
