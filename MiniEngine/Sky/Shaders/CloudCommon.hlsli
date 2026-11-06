@@ -32,10 +32,13 @@ static const float kNoiseTexelMeters = 1.0 / (kNoiseFrequency * 128.0);
 static const float kCloudEpsilon = 1e-4;
 static const uint kAmortizationSize = 4; //วั รเ
 
+static const uint Bayer4x4[16] = { 0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5 };
+
 uint2 GetAmortizationOffset(uint FrameIndex)
 {
     uint Index = FrameIndex % (kAmortizationSize * kAmortizationSize);
-    return uint2(Index % kAmortizationSize, Index / kAmortizationSize);
+    return uint2(Bayer4x4[Index] % kAmortizationSize, Bayer4x4[Index] / kAmortizationSize);
+    //return uint2(Index % kAmortizationSize, Index / kAmortizationSize);
 }
 
 float GetNoiseMipFromFootprint(float FootprintMeters)

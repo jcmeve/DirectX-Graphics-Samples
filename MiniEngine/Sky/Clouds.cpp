@@ -310,6 +310,9 @@ void Clouds::Render(GraphicsContext& Context, const Math::Camera& Camera, const 
     {
         ScopedTimer _prof2(L"Amortization PS", Context);
 
+        //Context.ClearColor(s_CloudRenderTarget);
+        //Context.ClearColor(s_CloudDepthRenderTarget);
+
         Context.SetRootSignature(s_RootSig);
         Context.SetPipelineState(s_CloudAmortizationPSO);
         Context.SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
