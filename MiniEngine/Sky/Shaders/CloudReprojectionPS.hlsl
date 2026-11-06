@@ -48,35 +48,60 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     ? mul(PrevViewProj, float4(Dir * ApproximatePreviusDepth + CameraDeltaMeters, 1.0))
     : mul(PrevViewProj, float4(Dir , 0.0));
     float2 PreviusUV = float2(ClipPosition.x / ClipPosition.w * 0.5 + 0.5, 0.5 - ClipPosition.y / ClipPosition.w * 0.5);
+
+    uint2 LowSize;
+    CloudRenderTarget.GetDimensions(LowSize.x, LowSize.y);
+    uint2 LowPixel = min(Pixel / kAmortizationSize, LowSize - 1);
+    
+    // 주변 갱신 픽셀 중 구름인 부분이 아예 없으면 안그림 
+    // 아마 속도 예측이 들어가야 할 것 같은데
+    bool flag = false;
+    for (int i = -1; i <= 1; ++i)
+    {  
+        if (flag)
+            break;
+        for (int j = -1; j <= 1; ++j)
+        {
+            if (CloudRenderTarget[LowPixel + uint2(i, j)].w > 0.0)
+            {
+                flag = true;
+                break;
+            }
+        }
+    }
+    if(!flag)
+    {
+        CurrentCloud[Pixel] = 0;
+        CurrentCloudDepth[Pixel] = 0;
+        return 0.0;
+    }
     
     if (
-        !all((Pixel%kAmortizationSize) == GetAmortizationOffset(FrameIndex))
-        && ClipPosition.w > 0.0 && all(PreviusUV >= 0.0) && all(PreviusUV <= 1.0)//화면 밖 시 갱신    
-        )
+    !all((Pixel % kAmortizationSize) == GetAmortizationOffset(FrameIndex))
+    && ClipPosition.w > 0.0 && all(PreviusUV >= 0.0) && all(PreviusUV <= 1.0) //화면 밖 시 갱신    
+    )
     {
         uint2 PreviusPixel = min(uint2(PreviusUV * TargetSize), TargetSize - 1);
         float4 PreviusColor = PreviusCloud[PreviusPixel];
         float PreviusDepth = PreviusCloudDepth[PreviusPixel];
         
-        //float4 PreviusColor = PreviusCloud.SampleLevel(LinearClampSampler, PreviusUV, 0);
-        //float PreviusDepth = PreviusCloudDepth.SampleLevel(LinearClampSampler, PreviusUV, 0);
+    //float4 PreviusColor = PreviusCloud.SampleLevel(LinearClampSampler, PreviusUV, 0);
+    //float PreviusDepth = PreviusCloudDepth.SampleLevel(LinearClampSampler, PreviusUV, 0);
         
         float CameraDeltaLength = length(CameraDeltaMeters);
         float CosThetaXCameraDeltaLength = dot(CameraDeltaMeters, Dir);
 
-        //정확한 길이 계산
+    //정확한 길이 계산
         float NewDepth = -CosThetaXCameraDeltaLength + sqrt(CosThetaXCameraDeltaLength * CosThetaXCameraDeltaLength - CameraDeltaLength * CameraDeltaLength + PreviusDepth * PreviusDepth);
-        //근사
-        //float NewDepth = PreviusDepth - dot(Dir, CameraDeltaMeters);
+    //근사
+    //float NewDepth = PreviusDepth - dot(Dir, CameraDeltaMeters);
         
         CurrentCloud[Pixel] = PreviusColor;
         CurrentCloudDepth[Pixel] = PreviusDepth > 0.0 ? max(NewDepth, 0.001) : 0.0;
         return PreviusColor;
     }
 
-    uint2 LowSize;
-    CloudRenderTarget.GetDimensions(LowSize.x, LowSize.y);
-    uint2 LowPixel = min(Pixel / kAmortizationSize, LowSize - 1);
+
     
     float4 Color = CloudRenderTarget[LowPixel];
     CurrentCloud[Pixel] = Color;
