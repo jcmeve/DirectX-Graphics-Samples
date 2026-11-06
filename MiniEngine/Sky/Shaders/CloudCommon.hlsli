@@ -35,7 +35,7 @@ static const uint kAmortizationSize = 4; //วั รเ
 uint2 GetAmortizationOffset(uint FrameIndex)
 {
     uint Index = FrameIndex % (kAmortizationSize * kAmortizationSize);
-    return uint2(Index & kAmortizationSize, Index / kAmortizationSize);
+    return uint2(Index % kAmortizationSize, Index / kAmortizationSize);
 }
 
 float GetNoiseMipFromFootprint(float FootprintMeters)

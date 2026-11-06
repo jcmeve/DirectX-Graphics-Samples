@@ -42,7 +42,7 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
         return 0.0;
     }
     
-    float ApproximatePreviusDepth = PreviusCloudDepth[Pixel]; //현재 프레임 기반 추정치
+    float ApproximatePreviusDepth = PreviusCloudDepth.SampleLevel(LinearClampSampler, Pixel, 0);//[Pixel]; //현재 프레임 기반 추정치
     
     float4 ClipPosition = (ApproximatePreviusDepth > 0.0)
     ? mul(PrevViewProj, float4(Dir * ApproximatePreviusDepth + CameraDeltaMeters, 1.0))
@@ -57,6 +57,9 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
         uint2 PreviusPixel = min(uint2(PreviusUV * TargetSize), TargetSize - 1);
         float4 PreviusColor = PreviusCloud[PreviusPixel];
         float PreviusDepth = PreviusCloudDepth[PreviusPixel];
+        
+        //float4 PreviusColor = PreviusCloud.SampleLevel(LinearClampSampler, PreviusUV, 0);
+        //float PreviusDepth = PreviusCloudDepth.SampleLevel(LinearClampSampler, PreviusUV, 0);
         
         float CameraDeltaLength = length(CameraDeltaMeters);
         float CosThetaXCameraDeltaLength = dot(CameraDeltaMeters, Dir);
