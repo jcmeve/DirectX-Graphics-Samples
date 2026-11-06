@@ -98,25 +98,32 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
         return 0.0;
     }
     
-    float PreviusDepth = PreviusCloudDepth[Pixel];//현재 프레임 기반 추정치
+    float ApproximatePreviusDepth = PreviusCloudDepth[Pixel]; //현재 프레임 기반 추정치
     
-    float4 ClipPosition = (PreviusDepth > 0.0)
-    ? mul(PrevViewProj, float4(Dir * PreviusDepth + CameraDeltaMeters, 1.0))
+    float4 ClipPosition = (ApproximatePreviusDepth > 0.0)
+    ? mul(PrevViewProj, float4(Dir * ApproximatePreviusDepth + CameraDeltaMeters, 1.0))
     : mul(PrevViewProj, float4(Dir , 0.0));
     float2 PreviusUV = float2(ClipPosition.x / ClipPosition.w * 0.5 + 0.5, 0.5 - ClipPosition.y / ClipPosition.w * 0.5);
     
-    if ((uint(Position.y) % 4 + uint(Position.x)) % 4 != FrameIndex % 4)
+    if (
+        ((uint(Position.y) % 4 + uint(Position.x)) % 4 != FrameIndex % 4)
+        &&ClipPosition.w>0.0 && all(PreviusUV>=0.0)&&all(PreviusUV<=1.0)//화면 밖 시 갱신    
+        )
     {
         uint2 PreviusPixel = min(uint2(PreviusUV * TargetSize), TargetSize - 1);
         
         float4 PreviusColor = PreviusCloud[PreviusPixel];
         float PreviusDepth = PreviusCloudDepth[PreviusPixel];
 
-        CurrentCloud[Pixel] = PreviusColor;
-        float NewDepth = length((CameraPositionKm / 1000 + Dir * PreviusDepth) - (CameraPositionKm / 1000 - CameraDeltaMeters));
-        CurrentCloudDepth[Pixel] = PreviusDepth - ((PreviusDepth > 0) ? dot(Dir, CameraDeltaMeters) : 0);
-        CurrentCloudDepth[Pixel] = NewDepth;
+        //float NewDepth = PreviusDepth > 0.0 ? max(PreviusDepth - dot(Dir, CameraDeltaMeters), 0.001) : 0.0;
         
+        float CameraDeltaLength = length(CameraDeltaMeters);
+        float CosTheta = dot(CameraDeltaMeters / CameraDeltaLength, Dir);
+
+        float NewDepth = -CameraDeltaLength * CosTheta + (CosTheta > 0 ? 1.0 : -1.0) * sqrt((CosTheta * CosTheta - 1) * CameraDeltaLength * CameraDeltaLength + PreviusDepth);
+        
+        CurrentCloud[Pixel] = PreviusColor;
+        CurrentCloudDepth[Pixel] = NewDepth;
         return PreviusColor;
     }
 
