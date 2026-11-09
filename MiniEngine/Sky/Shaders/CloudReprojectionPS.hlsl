@@ -17,7 +17,16 @@ Texture2D<float4> CloudRenderTarget : register(t10);
 Texture2D<float> CloudDepthRenderTarget : register(t11);
 
 
+float4 ClipToAABB(float4 History, float4 BoxMin, float4 BoxMax)
+{
+    float4 Center = (BoxMin + BoxMax) * 0.5;
+    float4 Extent = (BoxMax - BoxMin) * 0.5 + 1e-5;
+    float4 Offset = History - Center;
+    float4 Unit = abs(Offset / Extent);
+    float MaxUnit = max(max(Unit.x, Unit.y), max(Unit.z, Unit.w));
+    return (MaxUnit > 1.0) ? Center + Offset / MaxUnit : History;
 
+}
 
 
 
@@ -68,35 +77,59 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
         uint2 PreviusPixel = min(uint2(PreviusUV * TargetSize), TargetSize - 1);
         
         float4 PreviusColor = PreviusCloud.SampleLevel(LinearClampSampler, PreviusUV, 0);
-        float PreviusDepth = PreviusCloudDepth[PreviusPixel];
+        float CloudDepth = CloudDepthRenderTarget[LowPixel];
         
         float4 MinColor = 987654321.0;
         float4 MaxColor = -987654321.0;
-        
         for (int y = -1; y <= 1; ++y)
         {
-            for(int x = -1; x <= 1; ++x)
+            for (int x = -1; x <= 1; ++x)
             {
                 int2 SamplePixel = clamp(int2(LowPixel) + int2(x, y), 0, int2(LowSize) - 1);
                 float4 SampleColor = CloudRenderTarget[SamplePixel];
+                
+                CloudDepth = max(CloudDepth, CloudDepthRenderTarget[SamplePixel]);
+                
                 MinColor = min(MinColor, SampleColor);
                 MaxColor = max(MaxColor, SampleColor);
             }
         }
-        
-        
+        //float4 CloudColor = ClipToAABB(PreviusColor, MinColor, MaxColor);
         float4 CloudColor = clamp(PreviusColor, MinColor, MaxColor);
-        CloudColor = lerp(CloudColor, PreviusColor, 0.2);
+        
+        
+        //float4 Moment1 = 0.0;
+        //float4 Moment2 = 0.0;
+        
+        //for (int y = -1; y <= 1; ++y)
+        //{
+        //    for (int x = -1; x <= 1; ++x)
+        //    {
+        //        int2 SamplePixel = clamp(int2(LowPixel) + int2(x, y), 0, int2(LowSize) - 1);
+        //        float4 SampleColor = CloudRenderTarget[SamplePixel];
+        //        CloudDepth = max(CloudDepth, CloudDepthRenderTarget[SamplePixel]);
+        //        Moment1 += SampleColor;
+        //        Moment2 += SampleColor * SampleColor;
+        //    }       
+        //}
+                           
+        //Moment1 /= 9.0;
+        //Moment2 /= 9.0;
+        //float4 Sigma = sqrt(max(Moment2 - Moment1 * Moment1, 0.0));
+        //static const float kVarianceScale = 1.0;
+        //float4 BoxMin = Moment1 - Sigma * kVarianceScale;
+        //float4 BoxMax = Moment1 + Sigma * kVarianceScale;
+        //float4 CloudColor = ClipToAABB(PreviusColor, BoxMin, BoxMax);
+        
+        float MotionPixels = length(PreviusPixel - Pixel);
+        float ClampWeight = saturate(MotionPixels / 5);
+        CloudColor = lerp(PreviusColor, CloudColor, ClampWeight);
+
         float CameraDeltaLength = length(CameraDeltaMeters);
         float CosThetaXCameraDeltaLength = dot(CameraDeltaMeters, Dir);
-
-    //정확한 길이 계산
-        float NewDepth = -CosThetaXCameraDeltaLength + sqrt(max(CosThetaXCameraDeltaLength * CosThetaXCameraDeltaLength - CameraDeltaLength * CameraDeltaLength + PreviusDepth * PreviusDepth, 0.0));
-    //근사
-    //float NewDepth = PreviusDepth - dot(Dir, CameraDeltaMeters);
         
         CurrentCloud[Pixel] = CloudColor;
-        CurrentCloudDepth[Pixel] = PreviusDepth > 0.0 ? max(NewDepth, 0.001) : 0.0;
+        CurrentCloudDepth[Pixel] = CloudDepth;
         return CloudColor;
     }
     
