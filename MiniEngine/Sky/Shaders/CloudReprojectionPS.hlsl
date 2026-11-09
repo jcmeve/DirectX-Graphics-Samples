@@ -70,15 +70,21 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
         CurrentCloudDepth[Pixel] = CloudDepthRenderTarget[LowPixel];
         return Color;
     }
+    float4 PreviusColor = PreviusCloud.SampleLevel(LinearClampSampler, PreviusUV, 0);
+    float4 MarchedNearColor = CloudRenderTarget.SampleLevel(LinearClampSampler, _UV, 0);
+    
+    uint2 PreviusPixel = min(uint2(PreviusUV * TargetSize), TargetSize - 1);
+    float MotionPixels = length(PreviusPixel - Pixel);
+    
+    float ColorWeight = length(PreviusColor - MarchedNearColor)*1.0+1e-5;
+    float MotionWeight = MotionPixels * 1.0+1e-5;
+    
+    float CloudDepth = CloudDepthRenderTarget[LowPixel];
+    float4 ReprojectionColor = 0;
     
     //갱신 안됐으나 이전 프레임에 화면 안에 있었던 경우 Reprojection
     if (ClipPosition.w > 0.0 && all(PreviusUV >= 0.0) && all(PreviusUV <= 1.0))
     {
-        uint2 PreviusPixel = min(uint2(PreviusUV * TargetSize), TargetSize - 1);
-        
-        float4 PreviusColor = PreviusCloud.SampleLevel(LinearClampSampler, PreviusUV, 0);
-        float CloudDepth = CloudDepthRenderTarget[LowPixel];
-        
         float4 MinColor = 987654321.0;
         float4 MaxColor = -987654321.0;
         for (int y = -1; y <= 1; ++y)
@@ -95,19 +101,21 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
             }
         }
         float4 CloudColor = clamp(PreviusColor, MinColor, MaxColor);
-        
-        float MotionPixels = length(PreviusPixel - Pixel);
         float ClampWeight = saturate(MotionPixels / 1);
         CloudColor = lerp(PreviusColor, CloudColor, ClampWeight);
 
-        CurrentCloud[Pixel] = CloudColor;
+        ReprojectionColor = CloudColor;
+    }
+    else
+    {
+        CurrentCloud[Pixel] = MarchedNearColor;
         CurrentCloudDepth[Pixel] = CloudDepth;
-        return CloudColor;
+        return MarchedNearColor;
     }
     
+    float4 FinalColor = lerp(MarchedNearColor, ReprojectionColor, MotionWeight / (MotionWeight + ColorWeight));
     //화면 밖에 있었고 갱신도 되지 않은 경우 샘플링에 의존
-    float4 Color = CloudRenderTarget.SampleLevel(LinearClampSampler, _UV, 0);
-    CurrentCloud[Pixel] = Color;
-    CurrentCloudDepth[Pixel] = CloudDepthRenderTarget[LowPixel];
-    return Color;
+    CurrentCloud[Pixel] = FinalColor;
+    CurrentCloudDepth[Pixel] = CloudDepth;
+    return FinalColor;
 }
