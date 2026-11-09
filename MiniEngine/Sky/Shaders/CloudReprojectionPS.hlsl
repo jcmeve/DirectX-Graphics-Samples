@@ -94,40 +94,12 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
                 MaxColor = max(MaxColor, SampleColor);
             }
         }
-        //float4 CloudColor = ClipToAABB(PreviusColor, MinColor, MaxColor);
         float4 CloudColor = clamp(PreviusColor, MinColor, MaxColor);
         
-        
-        //float4 Moment1 = 0.0;
-        //float4 Moment2 = 0.0;
-        
-        //for (int y = -1; y <= 1; ++y)
-        //{
-        //    for (int x = -1; x <= 1; ++x)
-        //    {
-        //        int2 SamplePixel = clamp(int2(LowPixel) + int2(x, y), 0, int2(LowSize) - 1);
-        //        float4 SampleColor = CloudRenderTarget[SamplePixel];
-        //        CloudDepth = max(CloudDepth, CloudDepthRenderTarget[SamplePixel]);
-        //        Moment1 += SampleColor;
-        //        Moment2 += SampleColor * SampleColor;
-        //    }       
-        //}
-                           
-        //Moment1 /= 9.0;
-        //Moment2 /= 9.0;
-        //float4 Sigma = sqrt(max(Moment2 - Moment1 * Moment1, 0.0));
-        //static const float kVarianceScale = 1.0;
-        //float4 BoxMin = Moment1 - Sigma * kVarianceScale;
-        //float4 BoxMax = Moment1 + Sigma * kVarianceScale;
-        //float4 CloudColor = ClipToAABB(PreviusColor, BoxMin, BoxMax);
-        
         float MotionPixels = length(PreviusPixel - Pixel);
-        float ClampWeight = saturate(MotionPixels / 5);
+        float ClampWeight = saturate(MotionPixels / 1);
         CloudColor = lerp(PreviusColor, CloudColor, ClampWeight);
 
-        float CameraDeltaLength = length(CameraDeltaMeters);
-        float CosThetaXCameraDeltaLength = dot(CameraDeltaMeters, Dir);
-        
         CurrentCloud[Pixel] = CloudColor;
         CurrentCloudDepth[Pixel] = CloudDepth;
         return CloudColor;

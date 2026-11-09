@@ -112,6 +112,7 @@ void FlyingFPSCamera::Update( float deltaTime )
 
     Matrix3 orientation = Matrix3(m_WorldEast, m_WorldUp, -m_WorldNorth) * Matrix3::MakeYRotation( m_CurrentHeading ) * Matrix3::MakeXRotation( m_CurrentPitch );
     Vector3 position = orientation * Vector3( strafe, ascent, -forward ) + m_TargetCamera.GetPosition();
+	Utility::Printf("Camera Position: %f %f %f\n", float(m_TargetCamera.GetForwardVec().GetX()), float(m_TargetCamera.GetForwardVec().GetY()), float(m_TargetCamera.GetForwardVec().GetZ()));
     m_TargetCamera.SetTransform( AffineTransform( orientation, position ) );
     m_TargetCamera.Update();
 }

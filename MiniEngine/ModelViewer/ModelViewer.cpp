@@ -207,10 +207,10 @@ void ModelViewer::Startup( void )
         float ShadowSize = Length(TerrainExtent) * 1.05f;
         m_ShadowCenter = TerrainCenter;
         m_ShadowBounds = Vector3(ShadowSize, ShadowSize, ShadowSize);
-
-        Vector3 Eye = TerrainCenter + Vector3(0.0f,
-            (float)TerrainExtent.GetY() * 0.5f + 200.0f, -(float)TerrainExtent.GetZ() * 0.4f);
-        m_Camera.SetEyeAtUp(Eye, TerrainCenter, Vector3(kYUnitVector));
+        Math::Vector3 Pos(163385.078125,227137.578125,11027.467773);
+        Math::Vector3 Forward(-0.996092, 0.028612, -0.083557);
+        //Vector3 Eye = TerrainCenter + Vector3(0.0f, (float)TerrainExtent.GetY() * 0.5f + 200.0f, -(float)TerrainExtent.GetZ() * 0.4f);
+        m_Camera.SetEyeAtUp(Pos, Pos+ Forward, Vector3(kYUnitVector));
     }
     else {
 #ifdef LEGACY_RENDERER
