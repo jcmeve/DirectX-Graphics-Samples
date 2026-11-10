@@ -76,7 +76,7 @@ namespace
     NumVar s_CloudOffsetX("Graphics/Clouds/Offset X (m)", 0.0f, -20000.0f, 20000.0f, 100.0f);
     NumVar s_CloudOffsetZ("Graphics/Clouds/Offset Z (m)", 0.0f, -20000.0f, 20000.0f, 100.0f);
     NumVar s_CloudExtinction("Graphics/Clouds/Extinction (1 per m)", 0.05f, 0.001f, 0.5f, 0.005f);
-    NumVar s_CloudStepScale("Graphics/Clouds/Step Scale", 0.08f, 0.01f, 1.0f, 0.01f);
+    NumVar s_CloudStepScale("Graphics/Clouds/Step Scale", 0.2f, 0.01f, 1.0f, 0.01f);
     IntVar s_CloudMaxSteps("Graphics/Clouds/Max Steps", 256, 16, 1024, 16);
     NumVar s_CloudAmbientScale("Graphics/Clouds/Ambient Scale", 1.0f, 0.0f, 4.0f, 0.1f);
     NumVar s_CloudMipDistanceScale("Graphics/Clouds/Noise Mip Distance Scale", 0.004f, 0.0f, 0.05f, 0.001f);
@@ -255,7 +255,7 @@ void Clouds::Initialize(void)
     s_CloudAmortizationPSO.SetRenderTargetFormats(2, AmortizationFormat, DXGI_FORMAT_UNKNOWN);
     s_CloudAmortizationPSO.SetVertexShader(g_pSkyFullscreenVS, sizeof(g_pSkyFullscreenVS));
     s_CloudAmortizationPSO.SetPixelShader(g_pCloudAmortizationPS, sizeof(g_pCloudAmortizationPS));
-    s_CloudAmortizationPSO.Finalize();
+    s_CloudAmortizationPSO.Finalize(); 
 
 
 

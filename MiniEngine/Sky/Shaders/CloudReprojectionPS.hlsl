@@ -16,7 +16,7 @@ RWTexture2D<float>  CurrentCloudDepth : register(u1);
 Texture2D<float4> CloudRenderTarget : register(t10);
 Texture2D<float> CloudDepthRenderTarget : register(t11);
 
-static const float kColorChangeSensitive = 0.5;
+static const float kColorChangeSensitive = 25.0;//20~30
 static const float kMotionSensitive = 0.2;
 
 float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
@@ -95,19 +95,15 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     float ClampWeight = saturate(MotionPixels * kMotionSensitive);
     float4 ReprojectionColor = lerp(PreviusColor, clamp(PreviusColor, MinColor, MaxColor), ClampWeight);
     
-    
-    float2 MarchedPixelCenter = float2(LowPixel * kAmortizationSize + SampleOffset) + 0.5;
-    float2 MarchedPreviusUV = PreviusUV + (MarchedPixelCenter - Position.xy) / TargetSize;
-    float4 MarchedCurrent = CloudRenderTarget[LowPixel];
-    float4 MarchedPrevius = PreviusCloud.SampleLevel(LinearClampSampler, MarchedPreviusUV, 0);
-    
-    float ColorChanged = length(MarchedCurrent - MarchedPrevius) / length(MarchedCurrent) + length(MarchedPrevius) + 1e-5;
-    float HistoryWeight = saturate(1.0 - ColorChanged * kColorChangeSensitive);
+    float ColorChanged = length(MarchedNearColor - ReprojectionColor) / (length(MarchedNearColor) + length(ReprojectionColor) + 1e-5);
+    float HistoryWeight = saturate(1.0 - max(ColorChanged - 0.01, 0.0) * kColorChangeSensitive);
     
     float4 FinalColor = lerp(MarchedNearColor, ReprojectionColor, HistoryWeight);
     //if (FinalColor.a > 0.1)
-        //FinalColor = float4(saturate(pow(abs((PreviusColor - ReprojectionColor).r) + 1, 1000)-1), saturate(pow(abs((PreviusColor - ReprojectionColor).g) + 1, 1000)-1), saturate(pow(abs((PreviusColor - ReprojectionColor).b) + 1, 1000)-1), 1.0);
-        //FinalColor = float4(HistoryWeight, ClampWeight, 0.0, 1);
+    //    //FinalColor = float4(saturate(pow(abs((MarchedNearColor - ReprojectionColor).r) + 1, 1.0) - 1), saturate(pow(abs((MarchedNearColor - ReprojectionColor).g) + 1, 1.0) - 1), saturate(pow(abs((MarchedNearColor - ReprojectionColor).b) + 1, 1.0) - 1), 1.0);
+    //    FinalColor = float4(HistoryWeight, 0.0, 0.0, 1);
+    //else
+    //    FinalColor = float4(0.2, 0.2, 0.2, 1.0);
     CurrentCloud[Pixel] = FinalColor;
     CurrentCloudDepth[Pixel] = CloudDepth;
     return FinalColor;
