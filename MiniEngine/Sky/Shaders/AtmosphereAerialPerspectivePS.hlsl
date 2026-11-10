@@ -17,6 +17,6 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     float4 AerialPerspective = SampleAerialPerspective(AerialPerspectiveVolume, LinearClampSampler, UV, DistanceKm);
 
     // 구름 그림자 빛줄기 Aerial Perspective에서 뺴서 표현
-    AerialPerspective.rgb -= SampleAtmosphereShadow(AerialPerspectiveVolume, LinearClampSampler, UV, DistanceKm);
+    AerialPerspective.rgb -= SampleAtmosphereShadow(AtmosphereShadowVolume, LinearClampSampler, UV, DistanceKm);
     return float4(max(AerialPerspective.rgb, 0.0), AerialPerspective.a);
 }

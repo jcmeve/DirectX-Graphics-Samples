@@ -16,19 +16,8 @@ RWTexture2D<float>  CurrentCloudDepth : register(u1);
 Texture2D<float4> CloudRenderTarget : register(t10);
 Texture2D<float> CloudDepthRenderTarget : register(t11);
 
-
-float4 ClipToAABB(float4 History, float4 BoxMin, float4 BoxMax)
-{
-    float4 Center = (BoxMin + BoxMax) * 0.5;
-    float4 Extent = (BoxMax - BoxMin) * 0.5 + 1e-5;
-    float4 Offset = History - Center;
-    float4 Unit = abs(Offset / Extent);
-    float MaxUnit = max(max(Unit.x, Unit.y), max(Unit.z, Unit.w));
-    return (MaxUnit > 1.0) ? Center + Offset / MaxUnit : History;
-
-}
-
-
+static const float kColorChangeSensitive = 0.5;
+static const float kMotionSensitive = 0.2;
 
 float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
 {
@@ -46,75 +35,78 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     Hit.y = min(Hit.y, SceneDistance);
     if (Hit.x >= Hit.y)
     {
-        CurrentCloud[Pixel] = 0;
-        CurrentCloudDepth[Pixel] = 0;
+        CurrentCloud[Pixel] = 0.0;
+        CurrentCloudDepth[Pixel] = 0.0;
         return 0.0;
     }
     
-    float ApproximatePreviusDepth = PreviusCloudDepth[Pixel];//[Pixel]; //현재 프레임 기반 추정치
-    
-    float4 ClipPosition = (ApproximatePreviusDepth > 0.0)
-    ? mul(PrevViewProj, float4(Dir * ApproximatePreviusDepth + CameraDeltaMeters, 1.0))
-    : mul(PrevViewProj, float4(Dir , 0.0));
-    float2 PreviusUV = float2(ClipPosition.x / ClipPosition.w * 0.5 + 0.5, 0.5 - ClipPosition.y / ClipPosition.w * 0.5);
-
     uint2 LowSize;
     CloudRenderTarget.GetDimensions(LowSize.x, LowSize.y);
     uint2 LowPixel = min(Pixel / kAmortizationSize, LowSize - 1);
+    float SampleOffset = GetAmortizationOffset(FrameIndex);
     
     //이번 프레임에 갱신된 경우 사용
-    if(all((Pixel % kAmortizationSize) == GetAmortizationOffset(FrameIndex)))
+    if (all((Pixel % kAmortizationSize) == SampleOffset))
     {
         float4 Color = CloudRenderTarget[LowPixel];
         CurrentCloud[Pixel] = Color;
         CurrentCloudDepth[Pixel] = CloudDepthRenderTarget[LowPixel];
         return Color;
     }
-    float4 PreviusColor = PreviusCloud.SampleLevel(LinearClampSampler, PreviusUV, 0);
-    float4 MarchedNearColor = CloudRenderTarget.SampleLevel(LinearClampSampler, _UV, 0);
+    float2 LowUV = ((Position.xy - SampleOffset - 0.5) / kAmortizationSize + 0.5) / LowSize;
+    float4 MarchedNearColor = CloudRenderTarget.SampleLevel(LinearClampSampler, LowUV, 0);
     
-    uint2 PreviusPixel = min(uint2(PreviusUV * TargetSize), TargetSize - 1);
-    float MotionPixels = length(PreviusPixel - Pixel);
     
-    float ColorWeight = length(PreviusColor - MarchedNearColor)*1.0+1e-5;
-    float MotionWeight = MotionPixels * 1.0+1e-5;
     
-    float CloudDepth = CloudDepthRenderTarget[LowPixel];
-    float4 ReprojectionColor = 0;
+    float4 MinColor = 987654321.0;
+    float4 MaxColor = -987654321.0;
+    float CloudDepth = 0;
     
-    //갱신 안됐으나 이전 프레임에 화면 안에 있었던 경우 Reprojection
-    if (ClipPosition.w > 0.0 && all(PreviusUV >= 0.0) && all(PreviusUV <= 1.0))
+    for (int y = -1; y <= 1; ++y)
     {
-        float4 MinColor = 987654321.0;
-        float4 MaxColor = -987654321.0;
-        for (int y = -1; y <= 1; ++y)
+        for (int x = -1; x <= 1; ++x)
         {
-            for (int x = -1; x <= 1; ++x)
-            {
-                int2 SamplePixel = clamp(int2(LowPixel) + int2(x, y), 0, int2(LowSize) - 1);
-                float4 SampleColor = CloudRenderTarget[SamplePixel];
+            int2 SamplePixel = clamp(int2(LowPixel) + int2(x, y), 0, int2(LowSize) - 1);
+            float4 SampleColor = CloudRenderTarget[SamplePixel];
                 
-                CloudDepth = max(CloudDepth, CloudDepthRenderTarget[SamplePixel]);
+            CloudDepth = max(CloudDepth, CloudDepthRenderTarget[SamplePixel]);
                 
-                MinColor = min(MinColor, SampleColor);
-                MaxColor = max(MaxColor, SampleColor);
-            }
+            MinColor = min(MinColor, SampleColor);
+            MaxColor = max(MaxColor, SampleColor);
         }
-        float4 CloudColor = clamp(PreviusColor, MinColor, MaxColor);
-        float ClampWeight = saturate(MotionPixels / 1);
-        CloudColor = lerp(PreviusColor, CloudColor, ClampWeight);
-
-        ReprojectionColor = CloudColor;
     }
-    else
+    
+    float ApproximatePreviusDepth = PreviusCloudDepth[Pixel];//[Pixel]; //현재 프레임 기반 추정치
+    float4 ClipPosition = (ApproximatePreviusDepth > 0.0)
+    ? mul(PrevViewProj, float4(Dir * ApproximatePreviusDepth + CameraDeltaMeters, 1.0))
+    : mul(PrevViewProj, float4(Dir, 0.0));
+    float2 PreviusUV = float2(ClipPosition.x / ClipPosition.w * 0.5 + 0.5, 0.5 - ClipPosition.y / ClipPosition.w * 0.5);
+
+    //이전 프레임에 화면 밖이었던 경우 가까운 갱신값 사용
+    if (!(ClipPosition.w > 0.0 && all(PreviusUV >= 0.0) && all(PreviusUV <= 1.0)))
     {
         CurrentCloud[Pixel] = MarchedNearColor;
         CurrentCloudDepth[Pixel] = CloudDepth;
         return MarchedNearColor;
     }
     
-    float4 FinalColor = lerp(MarchedNearColor, ReprojectionColor, MotionWeight / (MotionWeight + ColorWeight));
-    //화면 밖에 있었고 갱신도 되지 않은 경우 샘플링에 의존
+    float4 PreviusColor = PreviusCloud.SampleLevel(LinearClampSampler, PreviusUV, 0); 
+    float MotionPixels = length(PreviusUV * TargetSize - Pixel);
+    float ClampWeight = saturate(MotionPixels * kMotionSensitive);
+    float4 ReprojectionColor = lerp(PreviusColor, clamp(PreviusColor, MinColor, MaxColor), 1);
+    
+    
+    float2 MarchedPixelCenter = float2(LowPixel * kAmortizationSize + SampleOffset) + 0.5;
+    float2 MarchedPreviusUV = PreviusUV + (MarchedPixelCenter - Position.xy) / TargetSize;
+    float4 MarchedCurrent = CloudRenderTarget[LowPixel];
+    float4 MarchedPrevius = PreviusCloud.SampleLevel(LinearClampSampler, MarchedPreviusUV, 0);
+    
+    float ColorChanged = length(MarchedCurrent - MarchedPrevius) / length(MarchedCurrent) + length(MarchedPrevius) + 1e-5;
+    float HistoryWeight = saturate(1.0 - ColorChanged * kColorChangeSensitive);
+    
+    float4 FinalColor = lerp(MarchedNearColor, ReprojectionColor, 1);
+    //if (FinalColor.a > 0.1)
+    //    FinalColor = float4(0.0, ClampWeight, 0.0, 1);
     CurrentCloud[Pixel] = FinalColor;
     CurrentCloudDepth[Pixel] = CloudDepth;
     return FinalColor;

@@ -433,6 +433,38 @@ void Atmosphere::RenderSky(
         Compute.TransitionResource(s_SkyAmbient, kShaderResourceState);
     }
 
+    if (s_EnableAtmosphereShadow)
+    {
+        ScopedTimer _prof5(L"Atmosphere Shadow", Context);
+
+        ComputeContext& Compute = Context.GetComputeContext();
+        Compute.SetRootSignature(s_RootSig);
+        Compute.SetPipelineState(s_AtmosphereShadowPSO);
+
+        Compute.TransitionResource(s_TransmittanceLut, kShaderResourceState);
+        Compute.TransitionResource(s_MultiScatteringLut, kShaderResourceState);
+        Compute.TransitionResource(s_AtmosphereShadowVolume, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+
+        Compute.SetDynamicConstantBufferView(kAtmosphereCBV, sizeof(s_Constants), &s_Constants);
+        Compute.SetDynamicConstantBufferView(kViewCBV, sizeof(ViewConstants), &ViewConstants);
+        Compute.SetDynamicDescriptor(kSRVs, 0, s_TransmittanceLut.GetSRV());
+        Compute.SetDynamicDescriptor(kSRVs, 1, s_MultiScatteringLut.GetSRV());
+        Compute.SetDynamicDescriptor(kUAVs, 0, s_AtmosphereShadowVolume.GetUAV());
+        CloudShadowConstants Constants = s_CloudShadowConstants;
+        if (!s_EnableAerialPerspective)
+            Constants.ShaftMaxDistanceKm = 0.0f;
+
+        Compute.SetDynamicConstantBufferView(kCloudShadowCBV, sizeof(Constants), &Constants);
+        Compute.SetDynamicDescriptor(kSRVs, 5, s_CloudShadowSRV);
+        Compute.Dispatch2D(kAtmosphereShadowWidth, kAtmosphereShadowHeight, 8, 8);
+
+        Compute.TransitionResource(s_AtmosphereShadowVolume, kShaderResourceState);
+
+    }
+    else {
+        Context.ClearUAV(s_AtmosphereShadowVolume);
+    }
+
     if (s_EnableAerialPerspective)
     {
         ScopedTimer _prof4(L"Aerial Perspective", Context);
@@ -473,39 +505,6 @@ void Atmosphere::RenderSky(
         Context.SetDynamicDescriptor(kSRVs, 7, s_AtmosphereShadowVolume.GetSRV());
         BindCloudShadow(Context);
         Context.Draw(3);
-    }
-
-    if (s_EnableAtmosphereShadow) 
-    {
-        ScopedTimer _prof5(L"Atmosphere Shadow", Context);
-
-        ComputeContext& Compute = Context.GetComputeContext();
-        Compute.SetRootSignature(s_RootSig);
-        Compute.SetPipelineState(s_AtmosphereShadowPSO);
-
-        Compute.TransitionResource(s_TransmittanceLut, kShaderResourceState);
-        Compute.TransitionResource(s_MultiScatteringLut, kShaderResourceState);
-        Compute.TransitionResource(s_AtmosphereShadowVolume, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
-
-        Compute.SetDynamicConstantBufferView(kAtmosphereCBV, sizeof(s_Constants), &s_Constants);
-        Compute.SetDynamicConstantBufferView(kViewCBV, sizeof(ViewConstants), &ViewConstants);
-        Compute.SetDynamicDescriptor(kSRVs, 0, s_TransmittanceLut.GetSRV());
-        Compute.SetDynamicDescriptor(kSRVs, 1, s_MultiScatteringLut.GetSRV());
-        Compute.SetDynamicDescriptor(kUAVs, 0, s_AtmosphereShadowVolume.GetUAV());
-        CloudShadowConstants Constants = s_CloudShadowConstants;
-        if (!s_EnableAerialPerspective)
-            Constants.ShaftMaxDistanceKm = 0.0f;
-
-        Compute.SetDynamicConstantBufferView(kCloudShadowCBV, sizeof(Constants), &Constants);
-        Compute.SetDynamicDescriptor(kSRVs, 5, s_CloudShadowSRV);
-        Compute.Dispatch2D(kAtmosphereShadowWidth, kAtmosphereShadowHeight, 8, 8);
-
-        Compute.TransitionResource(s_AtmosphereShadowVolume, kShaderResourceState);
-
-    }
-    else {
-        Context.ClearUAV(s_AtmosphereShadowVolume);
-
     }
 
     {
