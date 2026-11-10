@@ -16,8 +16,8 @@ RWTexture2D<float>  CurrentCloudDepth : register(u1);
 Texture2D<float4> CloudRenderTarget : register(t10);
 Texture2D<float> CloudDepthRenderTarget : register(t11);
 
-static const float kColorChangeSensitive = 200.0;//20~30
-static const float kMotionSensitive = 0.01;
+static const float kColorChangeSensitive = 50.0;//20~30
+static const float kMotionSensitive = 0.1;
 
 float4 ClipToAABB(float4 History, float4 BoxMin, float4 BoxMax)
 {
@@ -107,7 +107,7 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     Moment1 /= 9.0;
     Moment2 /= 9.0;
     float4 Sigma = sqrt(max(Moment2 - Moment1 * Moment1, 0.0));
-    static const float kVarianceScale = 0.5;
+    static const float kVarianceScale = 1.1;
     float4 BoxMin = Moment1 - Sigma * kVarianceScale;
     float4 BoxMax = Moment1 + Sigma * kVarianceScale;
     
@@ -131,7 +131,7 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     float ClampWeight = saturate(MotionPixels * kMotionSensitive);
     float4 ReprojectionColor = lerp(PreviusColor, ClipToAABB(PreviusColor, BoxMin, BoxMax), ClampWeight);
     
-    float ColorChanged = length(MarchedNearColor - ReprojectionColor) / (length(MarchedNearColor) + length(ReprojectionColor) + 1e-5);
+    float ColorChanged = length(PreviusColor - ReprojectionColor) / (length(PreviusColor) + length(ReprojectionColor) + 1e-5);
     float HistoryWeight = saturate(1.0 - max(ColorChanged - 0.01, 0.0) * kColorChangeSensitive);
     
     float4 FinalColor = lerp(MarchedNearColor, ReprojectionColor, HistoryWeight);
