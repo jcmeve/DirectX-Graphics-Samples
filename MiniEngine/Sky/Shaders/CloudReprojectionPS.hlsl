@@ -43,7 +43,7 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     uint2 LowSize;
     CloudRenderTarget.GetDimensions(LowSize.x, LowSize.y);
     uint2 LowPixel = min(Pixel / kAmortizationSize, LowSize - 1);
-    float SampleOffset = GetAmortizationOffset(FrameIndex);
+    uint2 SampleOffset = GetAmortizationOffset(FrameIndex);
     
     //이번 프레임에 갱신된 경우 사용
     if (all((Pixel % kAmortizationSize) == SampleOffset))
@@ -93,7 +93,7 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     float4 PreviusColor = PreviusCloud.SampleLevel(LinearClampSampler, PreviusUV, 0); 
     float MotionPixels = length(PreviusUV * TargetSize - Pixel);
     float ClampWeight = saturate(MotionPixels * kMotionSensitive);
-    float4 ReprojectionColor = lerp(PreviusColor, clamp(PreviusColor, MinColor, MaxColor), 1);
+    float4 ReprojectionColor = lerp(PreviusColor, clamp(PreviusColor, MinColor, MaxColor), ClampWeight);
     
     
     float2 MarchedPixelCenter = float2(LowPixel * kAmortizationSize + SampleOffset) + 0.5;
@@ -104,9 +104,10 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     float ColorChanged = length(MarchedCurrent - MarchedPrevius) / length(MarchedCurrent) + length(MarchedPrevius) + 1e-5;
     float HistoryWeight = saturate(1.0 - ColorChanged * kColorChangeSensitive);
     
-    float4 FinalColor = lerp(MarchedNearColor, ReprojectionColor, 1);
+    float4 FinalColor = lerp(MarchedNearColor, ReprojectionColor, HistoryWeight);
     //if (FinalColor.a > 0.1)
-    //    FinalColor = float4(0.0, ClampWeight, 0.0, 1);
+        //FinalColor = float4(saturate(pow(abs((PreviusColor - ReprojectionColor).r) + 1, 1000)-1), saturate(pow(abs((PreviusColor - ReprojectionColor).g) + 1, 1000)-1), saturate(pow(abs((PreviusColor - ReprojectionColor).b) + 1, 1000)-1), 1.0);
+        //FinalColor = float4(HistoryWeight, ClampWeight, 0.0, 1);
     CurrentCloud[Pixel] = FinalColor;
     CurrentCloudDepth[Pixel] = CloudDepth;
     return FinalColor;
