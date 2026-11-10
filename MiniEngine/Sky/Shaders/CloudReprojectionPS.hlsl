@@ -16,7 +16,7 @@ RWTexture2D<float>  CurrentCloudDepth : register(u1);
 Texture2D<float4> CloudRenderTarget : register(t10);
 Texture2D<float> CloudDepthRenderTarget : register(t11);
 
-static const float kColorChangeSensitive = 25.0;//20~30
+static const float kColorChangeSensitive = 200.0;//20~30
 static const float kMotionSensitive = 0.01;
 
 float4 ClipToAABB(float4 History, float4 BoxMin, float4 BoxMax)
@@ -140,7 +140,7 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     //    FinalColor = float4(HistoryWeight, 0.0, 0.0, 1);
     //else
     //    FinalColor = float4(0.2, 0.2, 0.2, 1.0);
-    CurrentCloud[Pixel] = FinalColor;
+    CurrentCloud[Pixel] = lerp(MarchedNearColor, ReprojectionColor, HistoryWeight);
     CurrentCloudDepth[Pixel] = CloudDepth;
     return FinalColor;
 }
