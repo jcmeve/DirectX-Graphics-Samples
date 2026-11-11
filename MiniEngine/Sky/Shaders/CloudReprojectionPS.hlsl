@@ -18,6 +18,7 @@ Texture2D<float> CloudDepthRenderTarget : register(t11);
 
 static const float kColorChangeSensitive = 50.0;//20~30
 static const float kMotionSensitive = 0.1;
+static const float kMarchedColorChangeSensitive = 20.0;
 
 float4 ClipToAABB(float4 History, float4 BoxMin, float4 BoxMax)
 {
@@ -112,9 +113,8 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     float4 BoxMax = Moment1 + Sigma * kVarianceScale;
     
     
-    float ApproximatePreviusDepth = PreviusCloudDepth[Pixel];//[Pixel]; //현재 프레임 기반 추정치
-    float4 ClipPosition = (ApproximatePreviusDepth > 0.0)
-    ? mul(PrevViewProj, float4(Dir * ApproximatePreviusDepth + CameraDeltaMeters, 1.0))
+    float4 ClipPosition = (CloudDepth > 0.0)
+    ? mul(PrevViewProj, float4(Dir * CloudDepth + CameraDeltaMeters, 1.0))
     : mul(PrevViewProj, float4(Dir, 0.0));
     float2 PreviusUV = float2(ClipPosition.x / ClipPosition.w * 0.5 + 0.5, 0.5 - ClipPosition.y / ClipPosition.w * 0.5);
 
@@ -132,7 +132,28 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     float4 ReprojectionColor = lerp(PreviusColor, ClipToAABB(PreviusColor, BoxMin, BoxMax), ClampWeight);
     
     float ColorChanged = length(PreviusColor - ReprojectionColor) / (length(PreviusColor) + length(ReprojectionColor) + 1e-5);
-    float HistoryWeight = saturate(1.0 - max(ColorChanged - 0.01, 0.0) * kColorChangeSensitive);
+    //float HistoryWeight = saturate(1.0 - max(ColorChanged - 0.01, 0.0) * kColorChangeSensitive);
+    
+    float2 LowTexel = LowUV * LowSize + 0.5;
+    float2 LowFrac = frac(LowTexel);
+    float MarchedColorChanged = 0.0;
+    for (int BlockY = 0; BlockY <= 1; ++BlockY)
+    {
+        for (int Blockx = 0; Blockx <= 1; ++Blockx)
+        {
+            int2 MarchedLowPixel = clamp(int2(floor(LowTexel)) + int2(Blockx, BlockY), 0, int2(LowSize) - 1);
+            float2 MarchedPixelCenter = float2(MarchedLowPixel * kAmortizationSize + SampleOffset) + 0.5;
+            float2 MarchedPreviusUV = PreviusUV + (MarchedPixelCenter - Position.xy) / TargetSize;
+            float2 MarchedCurrent = CloudRenderTarget[MarchedLowPixel];
+            float2 MarchedPrevius = PreviusCloud.SampleLevel(LinearClampSampler, MarchedPreviusUV, 0);
+            
+            float BilinearWeight = (Blockx ? LowFrac.x : 1.0 - LowFrac.x) * (BlockY ? LowFrac.y : 1.0 - LowFrac.y);
+            MarchedColorChanged += BilinearWeight * length(MarchedCurrent - MarchedPrevius) / (length(MarchedCurrent) + length(MarchedPrevius) + 1e-5);
+
+        }
+    }
+    MarchedColorChanged *= 1.0 - ClampWeight;
+    float HistoryWeight = saturate(1.0 - max(max(ColorChanged - 0.01, 0.0) * kColorChangeSensitive, MarchedColorChanged*kMarchedColorChangeSensitive));
     
     float4 FinalColor = lerp(MarchedNearColor, ReprojectionColor, HistoryWeight);
     //if (FinalColor.a > 0.1)
