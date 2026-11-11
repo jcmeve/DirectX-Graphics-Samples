@@ -111,10 +111,17 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     float4 BoxMin = Moment1 - Sigma * kVarianceScale;
     float4 BoxMax = Moment1 + Sigma * kVarianceScale;
     
+    //float NewDepth = PreviusDepth > 0.0 ? max(PreviusDepth - dot(Dir, CameraDeltaMeters), 0.001) : 0.0;
+        
+    float CameraDeltaLength = length(CameraDeltaMeters);
+    float CosTheta = dot(CameraDeltaMeters / CameraDeltaLength, Dir);
+    float SinTheta = sqrt(1 - CosTheta * CosTheta);
+    
+    float PreviusDepth = sqrt(pow(CameraDeltaLength + CloudDepth * CosTheta, 2) + pow(CloudDepth * SinTheta, 2));
     
     float ApproximatePreviusDepth = PreviusCloudDepth[Pixel];//[Pixel]; //현재 프레임 기반 추정치
-    float4 ClipPosition = (ApproximatePreviusDepth > 0.0)
-    ? mul(PrevViewProj, float4(Dir * ApproximatePreviusDepth + CameraDeltaMeters, 1.0))
+    float4 ClipPosition = (PreviusDepth > 0.0)
+    ? mul(PrevViewProj, float4(Dir * PreviusDepth + CameraDeltaMeters, 1.0))
     : mul(PrevViewProj, float4(Dir, 0.0));
     float2 PreviusUV = float2(ClipPosition.x / ClipPosition.w * 0.5 + 0.5, 0.5 - ClipPosition.y / ClipPosition.w * 0.5);
 
@@ -129,17 +136,17 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     float4 PreviusColor = PreviusCloud.SampleLevel(LinearClampSampler, PreviusUV, 0); 
     float MotionPixels = length(PreviusUV * TargetSize - float2(Pixel));
     float ClampWeight = saturate(MotionPixels * kMotionSensitive);
-    float4 ReprojectionColor = lerp(PreviusColor, ClipToAABB(PreviusColor, BoxMin, BoxMax), ClampWeight);
+    float4 ReprojectionColor = lerp(PreviusColor, ClipToAABB(PreviusColor, BoxMin, BoxMax), 1);
     
     float ColorChanged = length(PreviusColor - ReprojectionColor) / (length(PreviusColor) + length(ReprojectionColor) + 1e-5);
     float HistoryWeight = saturate(1.0 - max(ColorChanged - 0.01, 0.0) * kColorChangeSensitive);
     
     float4 FinalColor = lerp(MarchedNearColor, ReprojectionColor, HistoryWeight);
-    //if (FinalColor.a > 0.1)
-    //    //FinalColor = float4(saturate(pow(abs((MarchedNearColor - ReprojectionColor).r) + 1, 1.0) - 1), saturate(pow(abs((MarchedNearColor - ReprojectionColor).g) + 1, 1.0) - 1), saturate(pow(abs((MarchedNearColor - ReprojectionColor).b) + 1, 1.0) - 1), 1.0);
-    //    FinalColor = float4(HistoryWeight, 0.0, 0.0, 1);
-    //else
-    //    FinalColor = float4(0.2, 0.2, 0.2, 1.0);
+    if (FinalColor.a > 0.1)
+        //FinalColor = float4(saturate(pow(abs((MarchedNearColor - ReprojectionColor).r) + 1, 1.0) - 1), saturate(pow(abs((MarchedNearColor - ReprojectionColor).g) + 1, 1.0) - 1), saturate(pow(abs((MarchedNearColor - ReprojectionColor).b) + 1, 1.0) - 1), 1.0);
+        FinalColor = float4(PreviusDepth / ApproximatePreviusDepth, 0.0, 0.0, 1);
+    else
+        FinalColor = float4(0.2, 0.2, 0.2, 1.0);
     CurrentCloud[Pixel] = lerp(MarchedNearColor, ReprojectionColor, HistoryWeight);
     CurrentCloudDepth[Pixel] = CloudDepth;
     return FinalColor;
