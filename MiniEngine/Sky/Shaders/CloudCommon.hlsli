@@ -21,6 +21,61 @@ cbuffer CloudConstants : register(b3)
 Texture3D<float4> CloudNoise : register(t4); // RG = Curly-Alligator 저/고주파, BA = Alligator 저/고주파
 Texture3D<float4> CloudModeling : register(t5); // R = Dimensional Profile, G = Detail Type, B = Density Scale
 Texture3D<float4> CloudField : register(t6); // R = SDF
+
+Texture3D<float> CloudBrickOccupancy : register(t12);
+Texture3D<float> CloudSectorOccupancy : register(t13);
+static const uint kBrickVoxels = 8;
+static const uint kSectorBricks = 4;
+static const float kCellExitBias = 0.05;
+
+struct OccupancyGrid
+{
+    float3 BrickMeters;
+    float3 SectorMeters;
+    int3 BrickCount;
+};
+
+OccupancyGrid GetOccupancyGrid()
+{
+    uint3 VoxelCount;
+    CloudModeling.GetDimensions(VoxelCount.x, VoxelCount.y, VoxelCount.z);
+    
+    uint3 BrickCount;
+    CloudBrickOccupancy.GetDimensions(BrickCount.x, BrickCount.y, BrickCount.z);
+    
+    OccupancyGrid Ret;
+    Ret.BrickMeters = BoundsSize / float3(VoxelCount.xzy) * kBrickVoxels;
+    Ret.SectorMeters = Ret.BrickMeters * kSectorBricks;
+    Ret.BrickCount = int3(BrickCount.xzy);
+
+    return Ret;
+}
+
+float GetCellExitDistance(float3 LocalPosition, float3 Dir, float3 CellMeters)
+{
+    float3 CellMin = floor(LocalPosition / CellMeters) * CellMeters;
+    float3 Boundary = CellMin + (length(Dir) > 0.0 ? CellMeters : 0.0);
+    float3 Distance = (length(Dir) > 1e-5 ? (Boundary - LocalPosition) / Dir : 1e20);
+    return max(min(min(Distance.x, Distance.y), Distance.z), 0.0);
+}
+
+float GetOccupancySkipDistance(float3 LocalPosition, float3 Dir, OccupancyGrid Grid)
+{
+    int3 Brick = clamp(int3(floor(LocalPosition / Grid.BrickMeters)), 0, Grid.BrickCount - 1);
+    int3 Sector = Brick / int(kSectorBricks);
+
+    //빈 영역 검사
+    if (CloudSectorOccupancy.Load(int4(Sector.xzy, 0)) <= 0.0)
+    {
+        return GetCellExitDistance(LocalPosition, Dir, Grid.SectorMeters) + kCellExitBias;
+    }
+    if(CloudBrickOccupancy.Load(int4(Brick.xzy, 0)) <= 0.0){
+        return GetCellExitDistance(LocalPosition, Dir, Grid.BrickMeters) + kCellExitBias;
+    }
+    return 0.0;
+}
+
+
 SamplerState LinearClampSampler : register(s0);
 SamplerState LinearWrapSampler : register(s1);
 

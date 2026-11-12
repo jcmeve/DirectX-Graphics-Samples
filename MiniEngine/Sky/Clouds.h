@@ -20,6 +20,8 @@ namespace Clouds
 	void Render(GraphicsContext& Context, const Math::Camera& Camera, const D3D12_VIEWPORT& Viewport, const D3D12_RECT& Scissor);
 
 	void RenderDebug(GraphicsContext& Context);
+	
+	void UpdateOccupancy(ComputeContext& Context);
 
 	void RenderShadowMap(ComputeContext& Context, const Math::Camera& Camera, const Math::Vector3& SunDirection);
 	D3D12_CPU_DESCRIPTOR_HANDLE GetShadowMapSRV(void);

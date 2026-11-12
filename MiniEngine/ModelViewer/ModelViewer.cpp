@@ -361,6 +361,7 @@ void ModelViewer::RenderScene( void )
         globals.IBLIntensity = g_IBLIntensity * Math::Max(kNightIBLScale, SunElevationFactor);
         globals.SkyAmbientIntensity = Atmosphere::IsAtmosphereEnabled() ? (float)g_SkyAmbientIntensity : 0.0f;
 
+        Clouds::UpdateOccupancy(gfxContext.GetComputeContext());
         Clouds::RenderShadowMap(gfxContext.GetComputeContext(), m_Camera, SunDirection);
         const CloudShadowConstants& CloudShadow = Clouds::GetShadowConstants();
         Atmosphere::SetCloudShadow(Clouds::GetShadowMapSRV(), CloudShadow);

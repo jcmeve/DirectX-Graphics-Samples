@@ -117,19 +117,31 @@ PS_OUT main(float4 Position : SV_Position, float2 UV : TEXCOORD0)
     float LightJitter = InterleavedGradientNoise(Pixel + kLightJitterPixelOffset, FrameIndex);
     
     float t = Hit.x + InterleavedGradientNoise(Pixel, FrameIndex) * max(1.0, sqrt(Hit.x) * StepScale);
+    #if 1  
+        OccupancyGrid Grid = GetOccupancyGrid();
+    #endif
     for (uint i = 0; i < MaxSteps && t < Hit.y; ++i)
     {
         float3 RelPos = Dir * t;
         float3 Coord = (RelPos - BoundsMin) / BoundsSize;
         float BaseStep = max(1.0, sqrt(t) * StepScale);
 
-        // SDF·Î ºó °ø°£ °Ç³Ê¶Ù±â
-        float Sdf = SampleCloudSdf(Coord);
-        if (Sdf > BaseStep)
+        #if 1
+        float SkipDistance = GetOccupancySkipDistance(Coord, Dir, Grid);
+        if (SkipDistance > 0.0)
         {
-            t += Sdf;
-            continue;
+            t += SkipDistance;
+            continue;   
         }
+        #else
+            // SDF·Î ºó °ø°£ °Ç³Ê¶Ù±â
+            float Sdf = SampleCloudSdf(Coord);
+            if (Sdf > BaseStep)
+            {
+                t += Sdf;
+                continue;
+            }
+        #endif
 
         float Density = GetVoxelCloudDensity(Coord, RelPos + CameraPosition, t).y;
         if (Density > 0.0)

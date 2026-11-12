@@ -57,8 +57,14 @@
     <FxCompile Include="Shaders\CloudAmortizationPS.hlsl">
       <ShaderType>Pixel</ShaderType>
     </FxCompile>
+    <FxCompile Include="Shaders\CloudBrickOccupancyCS.hlsl">
+      <ShaderType>Compute</ShaderType>
+    </FxCompile>
     <FxCompile Include="Shaders\CloudReprojectionPS.hlsl">
       <ShaderType>Pixel</ShaderType>
+    </FxCompile>
+    <FxCompile Include="Shaders\CloudSectorOccupancyCS.hlsl">
+      <ShaderType>Compute</ShaderType>
     </FxCompile>
     <FxCompile Include="Shaders\CloudShadowCS.hlsl" />
     <FxCompile Include="Shaders\SkyDebugViewPS.hlsl">

@@ -10,6 +10,7 @@
 #include "Camera.h"
 #include "Atmosphere.h"
 #include "ColorBuffer.h"
+#include "VolumeBuffer.h"
 #include <cfloat>
 #include <Display.h>
 
@@ -18,6 +19,8 @@
 #include "CompiledShaders/SkyFullscreenVS.h"
 #include "CompiledShaders/SkyDebugViewVolumePS.h"
 #include "CompiledShaders/CloudShadowCS.h"
+#include "CompiledShaders/CloudSectorOccupancyCS.h"
+#include "CompiledShaders/CloudBrickOccupancyCS.h"
 
 using namespace Graphics;
 
@@ -30,8 +33,9 @@ namespace
         kViewCBV,           //b2
         kCloudCBV,          //b3
         kCloudShadowCBV,    //b4
-        kSRVs,              //t0 ~ t7
-        kUAVs,              //u0 ~ u3
+        kSRVs,              //t0 ~ t13
+        kUAVs,              //u0 ~ u5
+        kOccupancyConstants,
         kNumRootBindings
     };
 
@@ -62,14 +66,19 @@ namespace
    
 
     const float kWorldUnitsToMeters = 0.01f; //cm to m
-    const float kCloudScale = 2.0f;
+    const float kCloudScale = 1.0f;
     const float kCloudBoundsSize[3] = { 4096.0f * kCloudScale, 512.0f * kCloudScale, 4096.0f * kCloudScale };
+
+    const uint32_t kBrickVoxels = 8;
+    const uint32_t kSectorBricks = 4;
 
     RootSignature s_RootSig;
     GraphicsPSO s_DebugViewVolumePSO(L"Clouds: Debug View Volume PSO");
     GraphicsPSO s_CloudReprojectionPSO(L"Clouds: Reprojection PSO");
     GraphicsPSO s_CloudAmortizationPSO(L"Clouds: Amortization PSO");
     ComputePSO s_ShadowMapPSO(L"Clouds: Shadow Map CS");
+    ComputePSO s_CloudBrickOccupancyPSO(L"Clouds: Brick Occupancy CS");
+    ComputePSO s_CloudSectorOccupancyPSO(L"Clouds: Sector Occupancy CS");
 
     BoolVar s_EnableClouds("Graphics/Clouds/Enable", true);
     NumVar s_CloudBaseAltitude("Graphics/Clouds/Base Altitude (m)", 2000.0f, 0.0f, 8000.0f, 100.0f);
@@ -100,6 +109,11 @@ namespace
     TextureRef s_ModelingTexture; //R: Dimensional Profile, G: Detail Type, B: Density Scale 512*512*64  
     TextureRef s_FieldTexture; //RÃ¤³Î 512*512*64 SDF
     bool s_bTexturesValid = false;
+
+    VolumeBuffer s_BrickOccupancy;
+    VolumeBuffer s_SectorOccupancy;
+    uint32_t s_BrickCount[3];
+    bool s_bOccupancyDirty = true;
 
     enum DebugVolume
     {
@@ -219,8 +233,9 @@ void Clouds::Initialize(void)
     s_RootSig[kViewCBV].InitAsConstantBuffer(2);
     s_RootSig[kCloudCBV].InitAsConstantBuffer(3);
     s_RootSig[kCloudShadowCBV].InitAsConstantBuffer(4);
-    s_RootSig[kSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 12);
+    s_RootSig[kSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 14);
     s_RootSig[kUAVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 0, 6);
+    s_RootSig[kOccupancyConstants].InitAsConstants(5, 4);
     s_RootSig.Finalize(L"Clouds");
 
     s_DebugViewVolumePSO.SetRootSignature(s_RootSig);
@@ -257,7 +272,15 @@ void Clouds::Initialize(void)
     s_CloudAmortizationPSO.SetPixelShader(g_pCloudAmortizationPS, sizeof(g_pCloudAmortizationPS));
     s_CloudAmortizationPSO.Finalize(); 
 
+#if 1
+    s_CloudBrickOccupancyPSO.SetRootSignature(s_RootSig);
+    s_CloudBrickOccupancyPSO.SetComputeShader(g_pCloudBrickOccupancyCS, sizeof(g_pCloudBrickOccupancyCS));
+    s_CloudBrickOccupancyPSO.Finalize();
 
+    s_CloudSectorOccupancyPSO.SetRootSignature(s_RootSig);
+    s_CloudSectorOccupancyPSO.SetComputeShader(g_pCloudSectorOccupancyCS, sizeof(g_pCloudSectorOccupancyCS));
+    s_CloudSectorOccupancyPSO.Finalize();
+#endif
 
     s_ShadowMapPSO.SetRootSignature(s_RootSig);
     s_ShadowMapPSO.SetComputeShader(g_pCloudShadowCS, sizeof(g_pCloudShadowCS));
@@ -280,6 +303,22 @@ void Clouds::Initialize(void)
 
     s_bTexturesValid = s_NoiseTexture.IsValid() && s_ModelingTexture.IsValid() && s_FieldTexture.IsValid();
     ASSERT(s_bTexturesValid);
+
+    s_BrickCount[0] = (s_ModelingTexture->GetWidth() + kBrickVoxels - 1) / kBrickVoxels;
+    s_BrickCount[1] = (s_ModelingTexture->GetHeight() + kBrickVoxels - 1) / kBrickVoxels;
+    s_BrickCount[2] = (s_ModelingTexture->GetDepth() + kBrickVoxels - 1) / kBrickVoxels;
+
+    s_BrickOccupancy.Create(L"Cloud Brick Occupancy", s_BrickCount[0], s_BrickCount[1], s_BrickCount[2], 1, DXGI_FORMAT_R32_FLOAT);
+
+    uint32_t SectorCount[3];
+
+    for (int i = 0; i < 3; ++i) 
+    {
+        SectorCount[i] = (s_BrickCount[i] + kSectorBricks - 1) / kSectorBricks;
+    }
+    s_SectorOccupancy.Create(L"Cloud Sector Occupancy", SectorCount[0], SectorCount[1], SectorCount[2], 1, DXGI_FORMAT_R32_FLOAT);
+    s_bOccupancyDirty = true;
+
 }
 
 void Clouds::Shutdown(void)
@@ -294,6 +333,8 @@ void Clouds::Shutdown(void)
     s_CloudDepthHistory[1].Destroy();
     s_CloudRenderTarget.Destroy();
     s_CloudDepthRenderTarget.Destroy();
+    s_BrickOccupancy.Destroy();
+    s_SectorOccupancy.Destroy();
 }
 
 void Clouds::Render(GraphicsContext& Context, const Math::Camera& Camera, const D3D12_VIEWPORT& Viewport, const D3D12_RECT& Scissor)
@@ -320,6 +361,8 @@ void Clouds::Render(GraphicsContext& Context, const Math::Camera& Camera, const 
         Context.TransitionResource(g_SceneDepthBuffer, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
         Context.TransitionResource(s_CloudRenderTarget, D3D12_RESOURCE_STATE_RENDER_TARGET, true);
         Context.TransitionResource(s_CloudDepthRenderTarget, D3D12_RESOURCE_STATE_RENDER_TARGET, true);
+        Context.TransitionResource(s_BrickOccupancy, kShaderResourceState);
+        Context.TransitionResource(s_SectorOccupancy, kShaderResourceState);
 
         const D3D12_CPU_DESCRIPTOR_HANDLE RTVs[] = { s_CloudRenderTarget.GetRTV(),s_CloudDepthRenderTarget.GetRTV()};
         Context.SetRenderTargets(2, RTVs);
@@ -332,6 +375,8 @@ void Clouds::Render(GraphicsContext& Context, const Math::Camera& Camera, const 
         Context.SetDynamicDescriptor(kSRVs, 4, s_NoiseTexture.GetSRV());
         Context.SetDynamicDescriptor(kSRVs, 5, s_ModelingTexture.GetSRV());
         Context.SetDynamicDescriptor(kSRVs, 6, s_FieldTexture.GetSRV());
+        Context.SetDynamicDescriptor(kSRVs, 12, s_BrickOccupancy.GetSRV());
+        Context.SetDynamicDescriptor(kSRVs, 13, s_SectorOccupancy.GetSRV());
 
         Context.Draw(3);
     }
@@ -401,6 +446,47 @@ void Clouds::RenderDebug(GraphicsContext& Context)
     Context.SetViewportAndScissor(g_OverlayBuffer.GetWidth() - kDebugViewSize - kDebugViewMargin, kDebugViewMargin,
         kDebugViewSize, kDebugViewSize);
     Context.Draw(3);
+}
+
+void Clouds::UpdateOccupancy(ComputeContext& Context)
+{
+    if (!s_bOccupancyDirty)
+        return;
+    const uint32_t BrickMin[3] = { 0, 0, 0 };
+    const uint32_t BrickMax[3] = { s_BrickCount[0], s_BrickCount[1], s_BrickCount[2] };
+
+    ScopedTimer _prof(L"Cloud Occupancy", Context);
+
+    Context.SetRootSignature(s_RootSig);
+    Context.TransitionResource(s_BrickOccupancy, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+    Context.TransitionResource(s_SectorOccupancy, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+    Context.SetDynamicDescriptor(kSRVs, 5, s_ModelingTexture.GetSRV());
+    Context.SetDynamicDescriptor(kUAVs, 0, s_BrickOccupancy.GetUAV());
+    Context.SetDynamicDescriptor(kUAVs, 1, s_SectorOccupancy.GetUAV());
+
+    Context.SetPipelineState(s_CloudBrickOccupancyPSO);
+    Context.SetConstants(kOccupancyConstants, BrickMin[0], BrickMin[1], BrickMin[2]);
+    Context.Dispatch3D(BrickMax[0] - BrickMin[0], BrickMax[1] - BrickMin[1], BrickMax[2] - BrickMin[2], 4, 4, 4);
+    Context.InsertUAVBarrier(s_BrickOccupancy);
+
+    uint32_t SectorMin[3], SectorMax[3];
+    for (int i = 0; i < 3; ++i)
+    {
+        SectorMin[0] = BrickMin[0] / kSectorBricks;
+        SectorMax[0] = (BrickMax[0] + kSectorBricks - 1) / kSectorBricks;
+    }
+
+    Context.SetPipelineState(s_CloudSectorOccupancyPSO);
+    Context.SetConstants(kOccupancyConstants, SectorMin[0], SectorMin[1], SectorMin[2]);
+    Context.Dispatch3D(SectorMax[0] - SectorMin[0], SectorMax[1] - SectorMin[1], SectorMax[2] - SectorMin[2], 4, 4, 4);
+    Context.InsertUAVBarrier(s_SectorOccupancy);
+
+    Context.TransitionResource(s_BrickOccupancy, kShaderResourceState);
+    Context.TransitionResource(s_SectorOccupancy, kShaderResourceState);
+
+
+
+	s_bOccupancyDirty = true;
 }
 
 void Clouds::RenderShadowMap(ComputeContext& Context, const Math::Camera& Camera, const Math::Vector3& SunDirection)
