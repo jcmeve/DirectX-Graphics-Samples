@@ -175,6 +175,15 @@ float SampleCloudProfile(float3 Coord)
     return Modeling.r * Modeling.b;
 }
 
+float SampleCloudDimensionalProfile(float3 Coord)
+{
+    if (!IsInsideBounds(Coord))
+        return 0.0;
+
+    float3 Modeling = CloudModeling.SampleLevel(LinearClampSampler, ToVolumeUVW(Coord), 0).rgb;
+    return Modeling.r;
+}
+
 float GetUprezzedVoxelCloudDensity(float3 SamplePosition, float Distance, float MipLevel, float Profile, float Type, float DensityScale, bool bHFDetails)
 {
     float4 Noise = CloudNoise.SampleLevel(LinearWrapSampler, SamplePosition.xzy * kNoiseFrequency, MipLevel);

@@ -72,7 +72,7 @@ namespace
    
 
     const float kWorldUnitsToMeters = 0.01f; //cm to m
-    const float kCloudScale = 1.0f;
+    const float kCloudScale = 2.0f;
     const float kCloudBoundsSize[3] = { 4096.0f * kCloudScale, 512.0f * kCloudScale, 4096.0f * kCloudScale };
 
     const uint32_t kBrickVoxels = 8;

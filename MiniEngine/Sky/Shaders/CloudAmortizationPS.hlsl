@@ -150,9 +150,28 @@ PS_OUT main(float4 Position : SV_Position, float2 UV : TEXCOORD0)
 
             // Multi Scattering ±Ù»ç
             float LightDepth = GetLightOpticalDepth(RelPos, t, frac(LightJitter + i * kGoldenRatioFrac));
+
+            float3 InSun = SunIlluminance * GetSunTransmittance(RelPos);
             
-            float3 StepLuminance = SunIlluminance * GetSunTransmittance(RelPos) * GetSunScattering(LightDepth, CosTheta)
-                + SkyAmbient * lerp(0.5, 1.0, Coord.y);
+            float phase = saturate(HenyeyGreenstein(CosTheta, 0.75) * 3.0);
+            float sigma = SampleCloudProfile(Coord) * 1.0;
+            float segmentScatter = 1.0 - exp(-sigma * BaseStep);
+            
+            
+            float3 DirectScattering = InSun * exp(-LightDepth) * Phase, SegmentScatter;
+            
+            
+            float MS_Volume = SampleCloudDimensionalProfile(Coord);
+            float CloudDistance = SampleCloudSdf(Coord);
+            MS_Volume *= exp(-LightDepth * ValueRemap(CosTheta, 0.0, 0.9, 0.25, ValueRemap(CloudDistance, -128.0, 0.0, 0.05, 0.25)));
+            float3 MultipleScattering = InSun * MS_Volume*0.25;
+            
+            float3 AmbientScattering = SkyAmbient * pow(1.0 - SampleCloudDimensionalProfile(Coord), 0.5) * AmbientScale;
+            
+            
+            
+            float3 StepLuminance = DirectScattering + MultipleScattering + AmbientScattering;
+           
             
             float Weight = Transmittance * (1.0 - StepTransmittance);
             Luminance += StepLuminance * Weight;
