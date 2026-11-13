@@ -309,14 +309,7 @@ void Clouds::Initialize(void)
     s_BrickCount[2] = (s_ModelingTexture->GetDepth() + kBrickVoxels - 1) / kBrickVoxels;
 
     s_BrickOccupancy.Create(L"Cloud Brick Occupancy", s_BrickCount[0], s_BrickCount[1], s_BrickCount[2], 1, DXGI_FORMAT_R32_FLOAT);
-
-    uint32_t SectorCount[3];
-
-    for (int i = 0; i < 3; ++i) 
-    {
-        SectorCount[i] = (s_BrickCount[i] + kSectorBricks - 1) / kSectorBricks;
-    }
-    s_SectorOccupancy.Create(L"Cloud Sector Occupancy", SectorCount[0], SectorCount[1], SectorCount[2], 1, DXGI_FORMAT_R32_FLOAT);
+    s_SectorOccupancy.Create(L"Cloud Sector Occupancy", s_BrickCount[0], s_BrickCount[1], s_BrickCount[2], 1, DXGI_FORMAT_R32_FLOAT);
     s_bOccupancyDirty = true;
 
 }
@@ -477,8 +470,8 @@ void Clouds::UpdateOccupancy(ComputeContext& Context)
     }
 
     Context.SetPipelineState(s_CloudSectorOccupancyPSO);
-    Context.SetConstants(kOccupancyConstants, SectorMin[0], SectorMin[1], SectorMin[2]);
-    Context.Dispatch3D(SectorMax[0] - SectorMin[0], SectorMax[1] - SectorMin[1], SectorMax[2] - SectorMin[2], 4, 4, 4);
+    Context.SetConstants(kOccupancyConstants, BrickMin[0], BrickMin[1], BrickMin[2]);
+    Context.Dispatch3D(BrickMax[0] - BrickMin[0], BrickMax[1] - BrickMin[1], BrickMax[2] - BrickMin[2], 4, 4, 4);
     Context.InsertUAVBarrier(s_SectorOccupancy);
 
     Context.TransitionResource(s_BrickOccupancy, kShaderResourceState);
