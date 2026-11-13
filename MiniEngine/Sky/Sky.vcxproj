@@ -57,6 +57,9 @@
     <FxCompile Include="Shaders\CloudAmortizationPS.hlsl">
       <ShaderType>Pixel</ShaderType>
     </FxCompile>
+    <FxCompile Include="Shaders\CloudBrickDistanceCS.hlsl">
+      <ShaderType>Compute</ShaderType>
+    </FxCompile>
     <FxCompile Include="Shaders\CloudBrickOccupancyCS.hlsl">
       <ShaderType>Compute</ShaderType>
     </FxCompile>

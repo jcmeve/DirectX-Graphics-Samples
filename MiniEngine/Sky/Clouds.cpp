@@ -19,8 +19,14 @@
 #include "CompiledShaders/SkyFullscreenVS.h"
 #include "CompiledShaders/SkyDebugViewVolumePS.h"
 #include "CompiledShaders/CloudShadowCS.h"
-#include "CompiledShaders/CloudSectorOccupancyCS.h"
 #include "CompiledShaders/CloudBrickOccupancyCS.h"
+//#define BRICK_DISTANCE_FIELD
+
+#ifdef BRICK_DISTANCE_FIELD
+#include "CompiledShaders/CloudBrickDistanceCS.h"
+#else
+#include "CompiledShaders/CloudSectorOccupancyCS.h"
+#endif
 
 using namespace Graphics;
 
@@ -78,8 +84,11 @@ namespace
     GraphicsPSO s_CloudAmortizationPSO(L"Clouds: Amortization PSO");
     ComputePSO s_ShadowMapPSO(L"Clouds: Shadow Map CS");
     ComputePSO s_CloudBrickOccupancyPSO(L"Clouds: Brick Occupancy CS");
+#ifdef BRICK_DISTANCE_FIELD
+    ComputePSO s_CloudBrickDistancePSO(L"Clouds: Brick Distance CS");
+#else
     ComputePSO s_CloudSectorOccupancyPSO(L"Clouds: Sector Occupancy CS");
-
+#endif
     BoolVar s_EnableClouds("Graphics/Clouds/Enable", true);
     NumVar s_CloudBaseAltitude("Graphics/Clouds/Base Altitude (m)", 2000.0f, 0.0f, 8000.0f, 100.0f);
     NumVar s_CloudOffsetX("Graphics/Clouds/Offset X (m)", 0.0f, -20000.0f, 20000.0f, 100.0f);
@@ -111,7 +120,11 @@ namespace
     bool s_bTexturesValid = false;
 
     VolumeBuffer s_BrickOccupancy;
+#ifdef BRICK_DISTANCE_FIELD
+    VolumeBuffer s_BrickDistance;
+#else
     VolumeBuffer s_SectorOccupancy;
+#endif
     uint32_t s_BrickCount[3];
     bool s_bOccupancyDirty = true;
 
@@ -272,16 +285,22 @@ void Clouds::Initialize(void)
     s_CloudAmortizationPSO.SetPixelShader(g_pCloudAmortizationPS, sizeof(g_pCloudAmortizationPS));
     s_CloudAmortizationPSO.Finalize(); 
 
-#if 1
     s_CloudBrickOccupancyPSO.SetRootSignature(s_RootSig);
     s_CloudBrickOccupancyPSO.SetComputeShader(g_pCloudBrickOccupancyCS, sizeof(g_pCloudBrickOccupancyCS));
     s_CloudBrickOccupancyPSO.Finalize();
 
+#ifdef BRICK_DISTANCE_FIELD
+
+    s_CloudBrickDistancePSO.SetRootSignature(s_RootSig);
+    s_CloudBrickDistancePSO.SetComputeShader(g_pCloudBrickDistanceCS, sizeof(g_pCloudBrickDistanceCS));
+    s_CloudBrickDistancePSO.Finalize();
+
+#else
     s_CloudSectorOccupancyPSO.SetRootSignature(s_RootSig);
     s_CloudSectorOccupancyPSO.SetComputeShader(g_pCloudSectorOccupancyCS, sizeof(g_pCloudSectorOccupancyCS));
     s_CloudSectorOccupancyPSO.Finalize();
-#endif
 
+#endif
     s_ShadowMapPSO.SetRootSignature(s_RootSig);
     s_ShadowMapPSO.SetComputeShader(g_pCloudShadowCS, sizeof(g_pCloudShadowCS));
     s_ShadowMapPSO.Finalize();
@@ -309,7 +328,18 @@ void Clouds::Initialize(void)
     s_BrickCount[2] = (s_ModelingTexture->GetDepth() + kBrickVoxels - 1) / kBrickVoxels;
 
     s_BrickOccupancy.Create(L"Cloud Brick Occupancy", s_BrickCount[0], s_BrickCount[1], s_BrickCount[2], 1, DXGI_FORMAT_R32_FLOAT);
-    s_SectorOccupancy.Create(L"Cloud Sector Occupancy", s_BrickCount[0], s_BrickCount[1], s_BrickCount[2], 1, DXGI_FORMAT_R32_FLOAT);
+#ifdef BRICK_DISTANCE_FIELD
+    s_BrickDistance.Create(L"Cloud Sector Occupancy", s_BrickCount[0], s_BrickCount[1], s_BrickCount[2], 1, DXGI_FORMAT_R32_FLOAT);
+#else
+    uint32_t SectorCount[3];
+
+    for (int i = 0; i < 3; ++i)
+    {
+        SectorCount[i] = (s_BrickCount[i] + kSectorBricks - 1) / kSectorBricks;
+    }
+    s_SectorOccupancy.Create(L"Cloud Sector Occupancy", SectorCount[0], SectorCount[1], SectorCount[2], 1, DXGI_FORMAT_R32_FLOAT);
+
+#endif
     s_bOccupancyDirty = true;
 
 }
@@ -327,7 +357,11 @@ void Clouds::Shutdown(void)
     s_CloudRenderTarget.Destroy();
     s_CloudDepthRenderTarget.Destroy();
     s_BrickOccupancy.Destroy();
+#ifdef BRICK_DISTANCE_FIELD
+    s_BrickDistance.Destroy();
+#else
     s_SectorOccupancy.Destroy();
+#endif
 }
 
 void Clouds::Render(GraphicsContext& Context, const Math::Camera& Camera, const D3D12_VIEWPORT& Viewport, const D3D12_RECT& Scissor)
@@ -355,8 +389,11 @@ void Clouds::Render(GraphicsContext& Context, const Math::Camera& Camera, const 
         Context.TransitionResource(s_CloudRenderTarget, D3D12_RESOURCE_STATE_RENDER_TARGET, true);
         Context.TransitionResource(s_CloudDepthRenderTarget, D3D12_RESOURCE_STATE_RENDER_TARGET, true);
         Context.TransitionResource(s_BrickOccupancy, kShaderResourceState);
+#ifdef BRICK_DISTANCE_FIELD
+        Context.TransitionResource(s_BrickDistance, kShaderResourceState);
+#else
         Context.TransitionResource(s_SectorOccupancy, kShaderResourceState);
-
+#endif
         const D3D12_CPU_DESCRIPTOR_HANDLE RTVs[] = { s_CloudRenderTarget.GetRTV(),s_CloudDepthRenderTarget.GetRTV()};
         Context.SetRenderTargets(2, RTVs);
         Context.SetViewportAndScissor(0, 0, s_CloudRenderTarget.GetWidth(), s_CloudRenderTarget.GetHeight());
@@ -369,8 +406,12 @@ void Clouds::Render(GraphicsContext& Context, const Math::Camera& Camera, const 
         Context.SetDynamicDescriptor(kSRVs, 5, s_ModelingTexture.GetSRV());
         Context.SetDynamicDescriptor(kSRVs, 6, s_FieldTexture.GetSRV());
         Context.SetDynamicDescriptor(kSRVs, 12, s_BrickOccupancy.GetSRV());
-        Context.SetDynamicDescriptor(kSRVs, 13, s_SectorOccupancy.GetSRV());
 
+#ifdef BRICK_DISTANCE_FIELD
+        Context.SetDynamicDescriptor(kSRVs, 13, s_BrickDistance.GetSRV());
+#else
+        Context.SetDynamicDescriptor(kSRVs, 13, s_SectorOccupancy.GetSRV());
+#endif
         Context.Draw(3);
     }
     {
@@ -452,16 +493,38 @@ void Clouds::UpdateOccupancy(ComputeContext& Context)
 
     Context.SetRootSignature(s_RootSig);
     Context.TransitionResource(s_BrickOccupancy, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+
+#ifdef BRICK_DISTANCE_FIELD
+
+    Context.TransitionResource(s_BrickDistance, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+#else
     Context.TransitionResource(s_SectorOccupancy, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+#endif
+
     Context.SetDynamicDescriptor(kSRVs, 5, s_ModelingTexture.GetSRV());
     Context.SetDynamicDescriptor(kUAVs, 0, s_BrickOccupancy.GetUAV());
+#ifdef BRICK_DISTANCE_FIELD
+    Context.SetDynamicDescriptor(kUAVs, 1, s_BrickDistance.GetUAV());
+#else
     Context.SetDynamicDescriptor(kUAVs, 1, s_SectorOccupancy.GetUAV());
 
+#endif
     Context.SetPipelineState(s_CloudBrickOccupancyPSO);
     Context.SetConstants(kOccupancyConstants, BrickMin[0], BrickMin[1], BrickMin[2]);
     Context.Dispatch3D(BrickMax[0] - BrickMin[0], BrickMax[1] - BrickMin[1], BrickMax[2] - BrickMin[2], 4, 4, 4);
     Context.InsertUAVBarrier(s_BrickOccupancy);
 
+#ifdef BRICK_DISTANCE_FIELD
+    Context.SetPipelineState(s_CloudBrickDistancePSO);
+#else
+    Context.SetPipelineState(s_CloudSectorOccupancyPSO);
+#endif
+    Context.SetConstants(kOccupancyConstants, BrickMin[0], BrickMin[1], BrickMin[2]);
+    
+#ifdef BRICK_DISTANCE_FIELD
+    Context.Dispatch3D(BrickMax[0] - BrickMin[0], BrickMax[1] - BrickMin[1], BrickMax[2] - BrickMin[2], 4, 4, 4);
+    Context.InsertUAVBarrier(s_BrickDistance);
+#else
     uint32_t SectorMin[3], SectorMax[3];
     for (int i = 0; i < 3; ++i)
     {
@@ -470,13 +533,18 @@ void Clouds::UpdateOccupancy(ComputeContext& Context)
     }
 
     Context.SetPipelineState(s_CloudSectorOccupancyPSO);
-    Context.SetConstants(kOccupancyConstants, BrickMin[0], BrickMin[1], BrickMin[2]);
-    Context.Dispatch3D(BrickMax[0] - BrickMin[0], BrickMax[1] - BrickMin[1], BrickMax[2] - BrickMin[2], 4, 4, 4);
+    Context.SetConstants(kOccupancyConstants, SectorMin[0], SectorMin[1], SectorMin[2]);
+    Context.Dispatch3D(SectorMax[0] - SectorMin[0], SectorMax[1] - SectorMin[1], SectorMax[2] - SectorMin[2], 4, 4, 4);
     Context.InsertUAVBarrier(s_SectorOccupancy);
+#endif
 
     Context.TransitionResource(s_BrickOccupancy, kShaderResourceState);
-    Context.TransitionResource(s_SectorOccupancy, kShaderResourceState);
 
+#ifdef BRICK_DISTANCE_FIELD
+    Context.TransitionResource(s_BrickDistance, kShaderResourceState);
+#else
+    Context.TransitionResource(s_SectorOccupancy, kShaderResourceState);
+#endif
 
 
 	s_bOccupancyDirty = false;

@@ -23,7 +23,14 @@ Texture3D<float4> CloudModeling : register(t5); // R = Dimensional Profile, G = 
 Texture3D<float4> CloudField : register(t6); // R = SDF
 
 Texture3D<float> CloudBrickOccupancy : register(t12);
+//#define BRICK_DISTANCE_FIELD
+
+#ifdef BRICK_DISTANCE_FIELD
 Texture3D<float> CloudBrickDistance : register(t13);
+#else
+Texture3D<float> CloudSectorOccupancy : register(t13);
+#endif
+
 static const uint kBrickVoxels = 8;
 static const uint kSectorBricks = 4;
 static const float kCellExitBias = 0.05;
@@ -63,7 +70,7 @@ float GetCellExitDistance(float3 LocalPosition, float3 Dir, float3 CellMeters)
 
 float GetOccupancySkipDistance(float3 LocalPosition, float3 Dir, OccupancyGrid Grid)
 {
-    
+#ifdef BRICK_DISTANCE_FIELD
     int3 Brick = clamp(int3(floor(LocalPosition / Grid.BrickMeters)), 0, Grid.BrickCount - 1);
     float Distance = CloudBrickDistance[Brick.xzy];
 
@@ -82,8 +89,22 @@ float GetOccupancySkipDistance(float3 LocalPosition, float3 Dir, OccupancyGrid G
                       (abs(Dir.z) > 1e-5) ? ((Exit.z - LocalPosition.z) / Dir.z) : 1e20);
     
     return max(min(min(T.x, T.y), T.z), 0.0) + kCellExitBias;
+#else
     
+    int3 Brick = clamp(int3(floor(LocalPosition / Grid.BrickMeters)), 0, Grid.BrickCount - 1);
+    int3 Sector = Brick / int(kSectorBricks);
 
+    //ºó ¿µ¿ª °Ë»ç
+    if (CloudSectorOccupancy[Sector.xzy] <= 0.0)
+    {
+        return GetCellExitDistance(LocalPosition, Dir, Grid.SectorMeters) + kCellExitBias;
+    }
+    if (CloudBrickOccupancy[Brick.xzy] <= 0.0)
+    {
+        return GetCellExitDistance(LocalPosition, Dir, Grid.BrickMeters) + kCellExitBias;
+    }
+    return 0.0;
+#endif
 }
 
 

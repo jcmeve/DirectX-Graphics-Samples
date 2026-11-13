@@ -5,37 +5,36 @@ cbuffer OccupancyConstants : register(b5)
     uint3 RegionMin;
 }
 RWTexture3D<float> BrickOccupancy : register(u0);
-RWTexture3D<float> BrickDistance : register(u1);
-
-static const int kMaxBrickDistance = 16;
+RWTexture3D<float> SectorOccupancy : register(u1);
 
 [numthreads(4, 4, 4)]
-void main( uint3 DTid : SV_DispatchThreadID )
+void main(uint3 DTid : SV_DispatchThreadID)
 {
-    uint3 BrickCount;
-    BrickDistance.GetDimensions(BrickCount.x, BrickCount.y, BrickCount.z);
+    uint3 SectorCount;
+    SectorOccupancy.GetDimensions(SectorCount.x, SectorCount.y, SectorCount.z);
     
-    uint3 Brick = RegionMin + DTid;
-    if(any(Brick>=BrickCount))
+    uint3 Sector = RegionMin + DTid;
+    if (any(Sector >= SectorCount))
         return;
     
-    int Nearest = kMaxBrickDistance + 1;
-    for (int z = -kMaxBrickDistance; z <= kMaxBrickDistance; ++z)
+    
+    uint3 BrickCount;
+    BrickOccupancy.GetDimensions(BrickCount.x, BrickCount.y, BrickCount.z);
+    uint3 BrickMin = Sector * kSectorBricks;
+    uint3 BrickMax = min(BrickMin + kSectorBricks, BrickCount);
+    
+    float MaxDensity = 0.0;
+    for (int z = BrickMin.z; z < BrickMax.z; ++z)
     {
-        for (int y = -kMaxBrickDistance; y <= kMaxBrickDistance; ++y)
+        for (int y = BrickMin.y; y < BrickMax.y; ++y)
         {
-            for (int x = -kMaxBrickDistance; x <= kMaxBrickDistance; ++x)
+            for (int x = BrickMin.x; x < BrickMax.x; ++x)
             {
-                int3 Other = Brick + int3(x, y, z);
-                if(any(Other < 0) || any(Other >= BrickCount))
-                    continue;   
-                if(BrickOccupancy[Other] > 0.0)
-                {
-                    Nearest = min(Nearest, max(abs(x), max(abs(y), abs(z))));
-                }
+                MaxDensity = max(MaxDensity, BrickOccupancy[uint3(x, y, z)]);
             }
         }
     }
-    BrickDistance[Brick] = Nearest;
+    
+    SectorOccupancy[Sector] = MaxDensity;
     
 }
