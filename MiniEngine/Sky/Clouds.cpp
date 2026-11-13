@@ -472,8 +472,8 @@ void Clouds::UpdateOccupancy(ComputeContext& Context)
     uint32_t SectorMin[3], SectorMax[3];
     for (int i = 0; i < 3; ++i)
     {
-        SectorMin[0] = BrickMin[0] / kSectorBricks;
-        SectorMax[0] = (BrickMax[0] + kSectorBricks - 1) / kSectorBricks;
+        SectorMin[i] = BrickMin[i] / kSectorBricks;
+        SectorMax[i] = (BrickMax[i] + kSectorBricks - 1) / kSectorBricks;
     }
 
     Context.SetPipelineState(s_CloudSectorOccupancyPSO);
@@ -486,7 +486,7 @@ void Clouds::UpdateOccupancy(ComputeContext& Context)
 
 
 
-	s_bOccupancyDirty = true;
+	s_bOccupancyDirty = false;
 }
 
 void Clouds::RenderShadowMap(ComputeContext& Context, const Math::Camera& Camera, const Math::Vector3& SunDirection)

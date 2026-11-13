@@ -14,7 +14,7 @@ void main( uint3 DTid : SV_DispatchThreadID )
     SectorOccupancy.GetDimensions(SectorCount.x, SectorCount.y, SectorCount.z);
     
     uint3 Sector = RegionMin + DTid;
-    if(any(Sector>SectorCount))
+    if(any(Sector>=SectorCount))
         return;
     
     

@@ -127,7 +127,7 @@ PS_OUT main(float4 Position : SV_Position, float2 UV : TEXCOORD0)
         float BaseStep = max(1.0, sqrt(t) * StepScale);
 
         #if 1
-        float SkipDistance = GetOccupancySkipDistance(Coord, Dir, Grid);
+        float SkipDistance = GetOccupancySkipDistance(RelPos - BoundsMin, Dir, Grid);
         if (SkipDistance > 0.0)
         {
             t += SkipDistance;

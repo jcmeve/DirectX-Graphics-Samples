@@ -12,7 +12,7 @@ void main( uint3 DTid : SV_DispatchThreadID )
     uint3 BrickCount;
     BrickOccupancy.GetDimensions(BrickCount.x, BrickCount.y, BrickCount.z);
     uint3 Brick = RegionMin + DTid;
-    if(any(DTid>=BrickCount))
+    if (any(Brick >= BrickCount))
         return;
     
     uint3 VoxelCount;
@@ -30,11 +30,11 @@ void main( uint3 DTid : SV_DispatchThreadID )
             for (int x = VoxelMin.x; x <= VoxelMax.x; ++x)
             {
                 int3 Voxel = clamp(int3(x, y, z), 0, int3(VoxelCount) - 1);
-                float3 Modeling = CloudModeling.Load(int4(Voxel, 0)).rgb;
+                float3 Modeling = CloudModeling[Voxel].rgb;
                 MaxDensity = max(MaxDensity, Modeling.r * Modeling.b);
             }
         }
     }
-    BrickOccupancy[Brick] = MaxDensity;
+    BrickOccupancy[Brick] = 1;
 
 }

@@ -54,8 +54,10 @@ OccupancyGrid GetOccupancyGrid()
 float GetCellExitDistance(float3 LocalPosition, float3 Dir, float3 CellMeters)
 {
     float3 CellMin = floor(LocalPosition / CellMeters) * CellMeters;
-    float3 Boundary = CellMin + (length(Dir) > 0.0 ? CellMeters : 0.0);
-    float3 Distance = (length(Dir) > 1e-5 ? (Boundary - LocalPosition) / Dir : 1e20);
+    float3 Boundary = CellMin + float3((Dir.x > 0.0 ? CellMeters.x : 0.0), (Dir.y > 0.0 ? CellMeters.y : 0.0), (Dir.z > 0.0 ? CellMeters.z : 0.0));
+    float3 Distance = float3((abs(Dir.x) > 1e-5) ? ((Boundary.x - LocalPosition.x) / Dir.x) : 1e20,
+                             (abs(Dir.y) > 1e-5) ? ((Boundary.y - LocalPosition.y) / Dir.y) : 1e20,
+                             (abs(Dir.z) > 1e-5) ? ((Boundary.z - LocalPosition.z) / Dir.z) : 1e20);
     return max(min(min(Distance.x, Distance.y), Distance.z), 0.0);
 }
 
@@ -65,11 +67,11 @@ float GetOccupancySkipDistance(float3 LocalPosition, float3 Dir, OccupancyGrid G
     int3 Sector = Brick / int(kSectorBricks);
 
     //ºó ¿µ¿ª °Ë»ç
-    if (CloudSectorOccupancy.Load(int4(Sector.xzy, 0)) <= 0.0)
+    if (CloudSectorOccupancy[Sector.xzy] <= 0.0)
     {
         return GetCellExitDistance(LocalPosition, Dir, Grid.SectorMeters) + kCellExitBias;
     }
-    if(CloudBrickOccupancy.Load(int4(Brick.xzy, 0)) <= 0.0){
+    if(CloudBrickOccupancy[Brick.xzy] <= 0.0){
         return GetCellExitDistance(LocalPosition, Dir, Grid.BrickMeters) + kCellExitBias;
     }
     return 0.0;
