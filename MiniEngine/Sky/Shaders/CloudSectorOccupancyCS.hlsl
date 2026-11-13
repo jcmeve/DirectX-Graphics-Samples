@@ -20,7 +20,7 @@ void main( uint3 DTid : SV_DispatchThreadID )
     
     uint3 BrickCount;
     BrickOccupancy.GetDimensions(BrickCount.x, BrickCount.y, BrickCount.z);
-    uint3 BrickMin = Sector + kSectorBricks;
+    uint3 BrickMin = Sector * kSectorBricks;
     uint3 BrickMax = min(BrickMin + kSectorBricks, BrickCount);
     
     float MaxDensity = 0.0;

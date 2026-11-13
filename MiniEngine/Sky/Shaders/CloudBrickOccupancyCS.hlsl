@@ -35,6 +35,6 @@ void main( uint3 DTid : SV_DispatchThreadID )
             }
         }
     }
-    BrickOccupancy[Brick] = 1;
+    BrickOccupancy[Brick] = MaxDensity;
 
 }
