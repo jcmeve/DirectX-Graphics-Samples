@@ -20,10 +20,9 @@ cbuffer CloudConstants : register(b3)
 
 Texture3D<float4> CloudNoise : register(t4); // RG = Curly-Alligator 저/고주파, BA = Alligator 저/고주파
 Texture3D<float4> CloudModeling : register(t5); // R = Dimensional Profile, G = Detail Type, B = Density Scale
-Texture3D<float4> CloudField : register(t6); // R = SDF
 
 Texture3D<float> CloudBrickOccupancy : register(t12);
-//#define BRICK_DISTANCE_FIELD
+#define BRICK_DISTANCE_FIELD
 
 #ifdef BRICK_DISTANCE_FIELD
 Texture3D<float> CloudBrickDistance : register(t13);
@@ -111,8 +110,6 @@ float GetOccupancySkipDistance(float3 LocalPosition, float3 Dir, OccupancyGrid G
 SamplerState LinearClampSampler : register(s0);
 SamplerState LinearWrapSampler : register(s1);
 
-static const float kSdfMinMeters = -256.0;
-static const float kSdfMaxMeters = 4096.0;
 static const float kNoiseFrequency = 0.01; // 노이즈 100m 타일
 static const float kHFDetailDistance = 150.0;
 static const float kNoiseTexelMeters = 1.0 / (kNoiseFrequency * 128.0);
@@ -158,12 +155,6 @@ float3 ToVolumeUVW(float3 Coord)
 bool IsInsideBounds(float3 Coord)
 {
     return all(Coord >= 0.0) && all(Coord <= 1.0);
-}
-
-float SampleCloudSdf(float3 Coord)
-{
-    float Encoded = CloudField.SampleLevel(LinearClampSampler, ToVolumeUVW(Coord), 0).r;
-    return lerp(kSdfMinMeters, kSdfMaxMeters, Encoded);
 }
 
 float SampleCloudProfile(float3 Coord)

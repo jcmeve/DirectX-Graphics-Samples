@@ -20,7 +20,7 @@
 #include "CompiledShaders/SkyDebugViewVolumePS.h"
 #include "CompiledShaders/CloudShadowCS.h"
 #include "CompiledShaders/CloudBrickOccupancyCS.h"
-//#define BRICK_DISTANCE_FIELD
+#define BRICK_DISTANCE_FIELD
 
 #ifdef BRICK_DISTANCE_FIELD
 #include "CompiledShaders/CloudBrickDistanceCS.h"
@@ -50,7 +50,6 @@ namespace
 
     const wchar_t* kNoisePath = L"NubisVoxelCloudsPack/DDS/NubisNoise.dds";
     const wchar_t* kModelingPath = L"NubisVoxelCloudsPack/DDS/StormbirdCloud_Modeling.dds";
-    const wchar_t* kFieldPath = L"NubisVoxelCloudsPack/DDS/StormbirdCloud_Field.dds";
 
     __declspec(align(16)) struct CloudConstants
     {
@@ -72,11 +71,12 @@ namespace
    
 
     const float kWorldUnitsToMeters = 0.01f; //cm to m
-    const float kCloudScale = 2.0f;
+    const float kCloudScale = 1.0f;
     const float kCloudBoundsSize[3] = { 4096.0f * kCloudScale, 512.0f * kCloudScale, 4096.0f * kCloudScale };
 
     const uint32_t kBrickVoxels = 8;
     const uint32_t kSectorBricks = 4;
+    const uint32_t kMaxBrickDistance = 4;
 
     RootSignature s_RootSig;
     GraphicsPSO s_DebugViewVolumePSO(L"Clouds: Debug View Volume PSO");
@@ -115,8 +115,7 @@ namespace
     const uint32_t kAmortizationSize = 4;//한 축
 
     TextureRef s_NoiseTexture; //128*128*128 노이즈 RGBA 각각
-    TextureRef s_ModelingTexture; //R: Dimensional Profile, G: Detail Type, B: Density Scale 512*512*64  
-    TextureRef s_FieldTexture; //R채널 512*512*64 SDF
+    VolumeBuffer s_CloudVolume; //R: Dimensional Profile, G: Detail Type, B: Density Scale 512*512*64  
     bool s_bTexturesValid = false;
 
     VolumeBuffer s_BrickOccupancy;
@@ -126,6 +125,8 @@ namespace
     VolumeBuffer s_SectorOccupancy;
 #endif
     uint32_t s_BrickCount[3];
+    uint32_t s_DirtyVoxelMin[3];
+    uint32_t s_DirtyVoxelMax[3];
     bool s_bOccupancyDirty = true;
 
     enum DebugVolume
@@ -133,20 +134,19 @@ namespace
         kDebugVolumeNone,
         kDebugVolumeNoise,
         kDebugVolumeModeling,
-        kDebugVolumeField,
     };
-    const char* kDebugVolumeLabels[] = { "None", "Noise", "Modeling", "Field (SDF)" };
+    const char* kDebugVolumeLabels[] = { "None", "Noise", "Modeling"};
 
     EnumVar s_DebugVolume("Graphics/Clouds/Debug/Show Volume", kDebugVolumeNone, _countof(kDebugVolumeLabels), kDebugVolumeLabels);
     NumVar s_DebugVolumeSlice("Graphics/Clouds/Debug/Volume Slice", 0.45f, 0.0f, 1.0f, 0.01f);
 
-    const TextureRef& GetDebugTexture(void)
+    const D3D12_CPU_DESCRIPTOR_HANDLE GetDebugSRV(void)
     {
         switch (s_DebugVolume)
         {
-        case kDebugVolumeNoise:    return s_NoiseTexture;
-        case kDebugVolumeModeling: return s_ModelingTexture;
-        default:                   return s_FieldTexture;
+        case kDebugVolumeNoise:    return s_NoiseTexture.GetSRV();
+        case kDebugVolumeModeling: return s_CloudVolume.GetSRV();
+        default:                   return s_CloudVolume.GetSRV();
         }
     }
 
@@ -317,15 +317,26 @@ void Clouds::Initialize(void)
     s_CloudDepthRenderTarget.Create(L"CloudDepthRenderTarget", CloudRenderTargetWidth, CloudRenderTargetHeight, 1, DXGI_FORMAT_R16_FLOAT);
 
     s_NoiseTexture = TextureManager::LoadDDSFromFile(kNoisePath);
-    s_ModelingTexture = TextureManager::LoadDDSFromFile(kModelingPath);
-    s_FieldTexture = TextureManager::LoadDDSFromFile(kFieldPath);
-
-    s_bTexturesValid = s_NoiseTexture.IsValid() && s_ModelingTexture.IsValid() && s_FieldTexture.IsValid();
+    TextureRef ModelingTexture = TextureManager::LoadDDSFromFile(kModelingPath);
+    s_bTexturesValid = s_NoiseTexture.IsValid() && ModelingTexture.IsValid();
     ASSERT(s_bTexturesValid);
 
-    s_BrickCount[0] = (s_ModelingTexture->GetWidth() + kBrickVoxels - 1) / kBrickVoxels;
-    s_BrickCount[1] = (s_ModelingTexture->GetHeight() + kBrickVoxels - 1) / kBrickVoxels;
-    s_BrickCount[2] = (s_ModelingTexture->GetDepth() + kBrickVoxels - 1) / kBrickVoxels;
+    Texture& ModelingSource = const_cast<Texture&> (*ModelingTexture.Get());
+    const D3D12_RESOURCE_DESC ModelingDesc = ModelingSource.GetResource()->GetDesc();
+    const uint32_t VoxelCount[3] = { (uint32_t)ModelingDesc.Width, (uint32_t)ModelingDesc.Height, (uint32_t)ModelingDesc.DepthOrArraySize };
+    s_CloudVolume.Create(L"Cloud Volume", VoxelCount[0], VoxelCount[1], VoxelCount[2], ModelingDesc.MipLevels, ModelingDesc.Format);
+
+    GraphicsContext& InitContext = GraphicsContext::Begin(L"Cloud Volume Init");
+    InitContext.CopyBuffer(s_CloudVolume, ModelingSource);
+    InitContext.TransitionResource(s_CloudVolume, kShaderResourceState);
+    InitContext.Finish(true);
+
+
+
+
+    for (int i = 0; i < 3; ++i)
+        s_BrickCount[i] = (VoxelCount[i] + kBrickVoxels - 1) / kBrickVoxels;
+
 
     s_BrickOccupancy.Create(L"Cloud Brick Occupancy", s_BrickCount[0], s_BrickCount[1], s_BrickCount[2], 1, DXGI_FORMAT_R32_FLOAT);
 #ifdef BRICK_DISTANCE_FIELD
@@ -340,6 +351,9 @@ void Clouds::Initialize(void)
     s_SectorOccupancy.Create(L"Cloud Sector Occupancy", SectorCount[0], SectorCount[1], SectorCount[2], 1, DXGI_FORMAT_R32_FLOAT);
 
 #endif
+
+    const uint32_t VoxelMin[3] = { 0,0,0 };
+    SetVolumeDirty(VoxelMin, VoxelCount);
     s_bOccupancyDirty = true;
 
 }
@@ -347,8 +361,7 @@ void Clouds::Initialize(void)
 void Clouds::Shutdown(void)
 {
     s_NoiseTexture = nullptr;
-    s_ModelingTexture = nullptr;
-    s_FieldTexture = nullptr;
+    s_CloudVolume.Destroy();
     s_ShadowMap.Destroy();
     s_CloudHistory[0].Destroy();
     s_CloudHistory[1].Destroy();
@@ -357,6 +370,7 @@ void Clouds::Shutdown(void)
     s_CloudRenderTarget.Destroy();
     s_CloudDepthRenderTarget.Destroy();
     s_BrickOccupancy.Destroy();
+   
 #ifdef BRICK_DISTANCE_FIELD
     s_BrickDistance.Destroy();
 #else
@@ -403,8 +417,7 @@ void Clouds::Render(GraphicsContext& Context, const Math::Camera& Camera, const 
 
         Context.SetDynamicConstantBufferView(kCloudCBV, sizeof(Constants), &Constants);
         Context.SetDynamicDescriptor(kSRVs, 4, s_NoiseTexture.GetSRV());
-        Context.SetDynamicDescriptor(kSRVs, 5, s_ModelingTexture.GetSRV());
-        Context.SetDynamicDescriptor(kSRVs, 6, s_FieldTexture.GetSRV());
+        Context.SetDynamicDescriptor(kSRVs, 5, s_CloudVolume.GetSRV());
         Context.SetDynamicDescriptor(kSRVs, 12, s_BrickOccupancy.GetSRV());
 
 #ifdef BRICK_DISTANCE_FIELD
@@ -459,8 +472,7 @@ void Clouds::Render(GraphicsContext& Context, const Math::Camera& Camera, const 
 
         Context.SetDynamicDescriptor(kSRVs, 3, g_SceneDepthBuffer.GetDepthSRV());
         Context.SetDynamicDescriptor(kSRVs, 4, s_NoiseTexture.GetSRV());
-        Context.SetDynamicDescriptor(kSRVs, 5, s_ModelingTexture.GetSRV());
-        Context.SetDynamicDescriptor(kSRVs, 6, s_FieldTexture.GetSRV());
+        Context.SetDynamicDescriptor(kSRVs, 5, s_CloudVolume.GetSRV());
         Context.Draw(3);
     }
 }
@@ -474,7 +486,8 @@ void Clouds::RenderDebug(GraphicsContext& Context)
     Context.SetPipelineState(s_DebugViewVolumePSO);
     Context.SetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     Context.SetRenderTarget(g_OverlayBuffer.GetRTV());
-    Context.SetDynamicDescriptor(kSRVs, 0, GetDebugTexture().GetSRV());
+    Context.SetDynamicDescriptor(kSRVs, 0, s_CloudVolume.GetSRV());
+    Context.SetDynamicDescriptor(kSRVs, 0, GetDebugSRV());
     Context.SetConstants(kDebugConstants, 1.0f, (float)s_DebugVolumeSlice);
 
     Context.SetViewportAndScissor(g_OverlayBuffer.GetWidth() - kDebugViewSize - kDebugViewMargin, kDebugViewMargin,
@@ -486,8 +499,16 @@ void Clouds::UpdateOccupancy(ComputeContext& Context)
 {
     if (!s_bOccupancyDirty)
         return;
-    const uint32_t BrickMin[3] = { 0, 0, 0 };
-    const uint32_t BrickMax[3] = { s_BrickCount[0], s_BrickCount[1], s_BrickCount[2] };
+    uint32_t BrickMin[3], BrickMax[3], DistanceMin[3], DistanceMax[3];
+
+    for (int i = 0; i < 3; ++i)
+    {
+        BrickMin[i] = (s_DirtyVoxelMin[i] > 0 ? s_DirtyVoxelMin[i] - 1 : 0) / kBrickVoxels;
+        BrickMax[i] = min(s_DirtyVoxelMax[i]/kBrickVoxels-1, s_BrickCount[i]);
+
+        DistanceMin[i] = (BrickMin[i] > kMaxBrickDistance) ? BrickMin[i] - kMaxBrickDistance : 0;
+        DistanceMax[i] = min(BrickMax[i] + kMaxBrickDistance, s_BrickCount[i]);
+    }
 
     ScopedTimer _prof(L"Cloud Occupancy", Context);
 
@@ -501,7 +522,7 @@ void Clouds::UpdateOccupancy(ComputeContext& Context)
     Context.TransitionResource(s_SectorOccupancy, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
 #endif
 
-    Context.SetDynamicDescriptor(kSRVs, 5, s_ModelingTexture.GetSRV());
+    Context.SetDynamicDescriptor(kSRVs, 5, s_CloudVolume.GetSRV());
     Context.SetDynamicDescriptor(kUAVs, 0, s_BrickOccupancy.GetUAV());
 #ifdef BRICK_DISTANCE_FIELD
     Context.SetDynamicDescriptor(kUAVs, 1, s_BrickDistance.GetUAV());
@@ -519,10 +540,11 @@ void Clouds::UpdateOccupancy(ComputeContext& Context)
 #else
     Context.SetPipelineState(s_CloudSectorOccupancyPSO);
 #endif
-    Context.SetConstants(kOccupancyConstants, BrickMin[0], BrickMin[1], BrickMin[2]);
+    Context.SetConstants(kOccupancyConstants, DistanceMin[0], DistanceMin[1], DistanceMin[2]);
     
 #ifdef BRICK_DISTANCE_FIELD
-    Context.Dispatch3D(BrickMax[0] - BrickMin[0], BrickMax[1] - BrickMin[1], BrickMax[2] - BrickMin[2], 4, 4, 4);
+
+    Context.Dispatch3D(DistanceMax[0] - DistanceMin[0], DistanceMax[1] - DistanceMin[1], DistanceMax[2] - DistanceMin[2], 4, 4, 4);
     Context.InsertUAVBarrier(s_BrickDistance);
 #else
     uint32_t SectorMin[3], SectorMax[3];
@@ -550,6 +572,15 @@ void Clouds::UpdateOccupancy(ComputeContext& Context)
 	s_bOccupancyDirty = false;
 }
 
+void Clouds::SetVolumeDirty(const uint32_t VoxelMin[3], const uint32_t VoxelMax[3])
+{
+    for (int i = 0; i < 3; ++i) {
+        s_DirtyVoxelMin[i] = s_bOccupancyDirty ? min(s_DirtyVoxelMin[i], VoxelMin[i]) : VoxelMin[i];
+        s_DirtyVoxelMax[i] = s_bOccupancyDirty ? max(s_DirtyVoxelMax[i],VoxelMax[i]) : VoxelMax[i];
+    }
+    s_bOccupancyDirty = true;
+}
+
 void Clouds::RenderShadowMap(ComputeContext& Context, const Math::Camera& Camera, const Math::Vector3& SunDirection)
 {
     ScopedTimer _prof(L"Cloud Shadow Map", Context);
@@ -571,8 +602,9 @@ void Clouds::RenderShadowMap(ComputeContext& Context, const Math::Camera& Camera
         Context.SetDynamicConstantBufferView(kCloudCBV, sizeof(Constants), &Constants);
         Context.SetDynamicConstantBufferView(kCloudShadowCBV, sizeof(s_ShadowConstants), &s_ShadowConstants);
         Context.SetDynamicDescriptor(kSRVs, 4, s_NoiseTexture.GetSRV());
-        Context.SetDynamicDescriptor(kSRVs, 5, s_ModelingTexture.GetSRV());
-        Context.SetDynamicDescriptor(kSRVs, 6, s_FieldTexture.GetSRV());
+        Context.SetDynamicDescriptor(kSRVs, 5, s_CloudVolume.GetSRV());
+        Context.SetDynamicDescriptor(kSRVs, 12, s_BrickOccupancy.GetSRV());
+        Context.SetDynamicDescriptor(kSRVs, 13, s_BrickDistance.GetSRV());
         Context.SetDynamicDescriptor(kUAVs, 0, s_ShadowMap.GetUAV());
         Context.Dispatch2D(kShadowMapSize, kShadowMapSize, 8, 8);
     }

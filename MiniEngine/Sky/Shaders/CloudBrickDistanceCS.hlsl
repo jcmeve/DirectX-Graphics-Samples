@@ -7,7 +7,7 @@ cbuffer OccupancyConstants : register(b5)
 RWTexture3D<float> BrickOccupancy : register(u0);
 RWTexture3D<float> BrickDistance : register(u1);
 
-static const int kMaxBrickDistance = 16;
+static const int kMaxBrickDistance = 4;
 
 [numthreads(4, 4, 4)]
 void main(uint3 DTid : SV_DispatchThreadID)

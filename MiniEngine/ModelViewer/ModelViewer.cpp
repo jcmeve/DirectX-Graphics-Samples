@@ -455,5 +455,4 @@ void ModelViewer::RenderScene( void )
 void ModelViewer::RenderUI(GraphicsContext& Context)
 {
 	Atmosphere::RenderDebug(Context);
-    Clouds::RenderDebug(Context);
 }

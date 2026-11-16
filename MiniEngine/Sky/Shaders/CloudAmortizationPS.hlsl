@@ -19,6 +19,7 @@ static const int kLightStepCount = 6;
 static const int kLightErosionStepCount = 3;
 static const float2 kLightJitterPixelOffset = float2(47.0, 17.0);
 static const float kGoldenRatioFrac = 0.61803398875;
+static const float kMultiScatterInnerAttenuation = 0.15;
 
 static const float kMinTransmittance = 0.01;
 static const int kScatterOctaveCount = 3;
@@ -159,8 +160,7 @@ PS_OUT main(float4 Position : SV_Position, float2 UV : TEXCOORD0)
             
             
             float MS_Volume = SampleCloudDimensionalProfile(Coord);
-            float CloudDistance = SampleCloudSdf(Coord);
-            MS_Volume *= exp(-LightDepth * ValueRemap(CosTheta, 0.0, 0.9, 0.25, ValueRemap(CloudDistance, -128.0, 0.0, 0.05, 0.25)));
+            MS_Volume *= exp(-LightDepth * ValueRemap(CosTheta, 0.0, 0.9, 0.25, kMultiScatterInnerAttenuation /*ValueRemap(CloudDistance, -128.0, 0.0, 0.05, 0.25))*/));
             float3 MultipleScattering = InSun * MS_Volume*0.2;
             
             float3 AmbientScattering = SkyAmbient * pow(1.0 - SampleCloudDimensionalProfile(Coord), 0.5);

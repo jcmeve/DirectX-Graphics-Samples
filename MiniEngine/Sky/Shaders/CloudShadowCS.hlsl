@@ -27,6 +27,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
 
     float3 BoxMin = BoundsMin + CameraPosition;
     float2 Hit = RayBoxIntersect(RayOrigin, RayDir, BoxMin, BoxMin + BoundsSize);
+    OccupancyGrid Grid = GetOccupancyGrid();
 
     float OpticalDepth = 0.0;
     float FrontDepth = max(Hit.y, 0.0);
@@ -37,6 +38,16 @@ void main(uint3 DTid : SV_DispatchThreadID)
         float3 WorldPos = RayOrigin + RayDir * t;
         float3 Coord = (WorldPos - BoxMin) / BoundsSize;
 
+#if 1
+        float SkipDistance = GetOccupancySkipDistance(WorldPos - BoxMin, RayDir, Grid);
+        if (SkipDistance > 0.0)
+        {
+            t += SkipDistance;
+            continue;
+        }
+        
+#else
+        
         // 빈 공간은 SDF로 건너뜀
         float Sdf = SampleCloudSdf(Coord);
         if (Sdf > kShadowStepMeters)
@@ -44,8 +55,9 @@ void main(uint3 DTid : SV_DispatchThreadID)
             t += Sdf;
             continue;
         }
-
-        float Density = GetVoxelCloudShadowDensity(Coord, WorldPos, MipLevel);
+#endif
+        
+            float Density = GetVoxelCloudShadowDensity(Coord, WorldPos, MipLevel);
         if (Density > 0.0)
         {
             //최초 Depth갱신
