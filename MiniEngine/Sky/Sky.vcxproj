@@ -21,6 +21,7 @@
     </None>
     <None Include="Shaders\CloudCommon.hlsli" />
     <None Include="Shaders\CloudShadowCommon.hlsli" />
+    <None Include="Shaders\CloudSimulationCommon.hlsli" />
     <None Include="Shaders\SkyDebugView.hlsli">
       <FileType>Document</FileType>
     </None>
@@ -70,6 +71,15 @@
       <ShaderType>Compute</ShaderType>
     </FxCompile>
     <FxCompile Include="Shaders\CloudShadowCS.hlsl" />
+    <FxCompile Include="Shaders\CloudSimulationAdvectionCS.hlsl">
+      <ShaderType>Compute</ShaderType>
+    </FxCompile>
+    <FxCompile Include="Shaders\CloudSimulationVelocityCS.hlsl">
+      <ShaderType>Compute</ShaderType>
+    </FxCompile>
+    <FxCompile Include="Shaders\CloudSimulationWriteBackCS.hlsl">
+      <ShaderType>Compute</ShaderType>
+    </FxCompile>
     <FxCompile Include="Shaders\SkyDebugViewPS.hlsl">
       <ShaderType>Pixel</ShaderType>
     </FxCompile>

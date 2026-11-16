@@ -28,6 +28,10 @@
 #include "CompiledShaders/CloudSectorOccupancyCS.h"
 #endif
 
+#include "CompiledShaders/CloudSimulationVelocityCS.h"
+#include "CompiledShaders/CloudSimulationAdvectionCS.h"
+#include "CompiledShaders/CloudSimulationWriteBackCS.h"
+
 using namespace Graphics;
 
 namespace
@@ -41,7 +45,8 @@ namespace
         kCloudShadowCBV,    //b4
         kSRVs,              //t0 ~ t13
         kUAVs,              //u0 ~ u5
-        kOccupancyConstants,
+        kOccupancyConstants,//b5
+        kSimulationCBV,      //b6
         kNumRootBindings
     };
 
@@ -51,6 +56,13 @@ namespace
     const wchar_t* kNoisePath = L"NubisVoxelCloudsPack/DDS/NubisNoise.dds";
     const wchar_t* kModelingPath = L"NubisVoxelCloudsPack/DDS/StormbirdCloud_Modeling.dds";
 
+
+    RootSignature s_RootSig;
+    GraphicsPSO s_DebugViewVolumePSO(L"Clouds: Debug View Volume PSO");
+
+    ComputePSO s_ShadowMapPSO(L"Clouds: Shadow Map CS");
+
+#pragma region CLOUD_DEFAULT
     __declspec(align(16)) struct CloudConstants
     {
         float BoundsMin[3];
@@ -68,27 +80,20 @@ namespace
         uint32_t FrameIndex;
     };
 
-   
-
     const float kWorldUnitsToMeters = 0.01f; //cm to m
     const float kCloudScale = 1.0f;
     const float kCloudBoundsSize[3] = { 4096.0f * kCloudScale, 512.0f * kCloudScale, 4096.0f * kCloudScale };
 
-    const uint32_t kBrickVoxels = 8;
-    const uint32_t kSectorBricks = 4;
-    const uint32_t kMaxBrickDistance = 4;
+    const uint32_t kShadowMapSize = 1024;
+    const D3D12_RESOURCE_STATES kShaderResourceState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
 
-    RootSignature s_RootSig;
-    GraphicsPSO s_DebugViewVolumePSO(L"Clouds: Debug View Volume PSO");
-    GraphicsPSO s_CloudReprojectionPSO(L"Clouds: Reprojection PSO");
-    GraphicsPSO s_CloudAmortizationPSO(L"Clouds: Amortization PSO");
-    ComputePSO s_ShadowMapPSO(L"Clouds: Shadow Map CS");
-    ComputePSO s_CloudBrickOccupancyPSO(L"Clouds: Brick Occupancy CS");
-#ifdef BRICK_DISTANCE_FIELD
-    ComputePSO s_CloudBrickDistancePSO(L"Clouds: Brick Distance CS");
-#else
-    ComputePSO s_CloudSectorOccupancyPSO(L"Clouds: Sector Occupancy CS");
-#endif
+    ColorBuffer s_ShadowMap(Color(0.0f, 0.0f, 0.0f, 0.0f));
+    CloudShadowConstants s_ShadowConstants = {};
+
+    TextureRef s_NoiseTexture; //128*128*128 노이즈 RGBA 각각
+    VolumeBuffer s_CloudVolume; //R: Dimensional Profile, G: Detail Type, B: Density Scale 512*512*64  
+    bool s_bTexturesValid = false;
+
     BoolVar s_EnableClouds("Graphics/Clouds/Enable", true);
     NumVar s_CloudBaseAltitude("Graphics/Clouds/Base Altitude (m)", 2000.0f, 0.0f, 8000.0f, 100.0f);
     NumVar s_CloudOffsetX("Graphics/Clouds/Offset X (m)", 0.0f, -20000.0f, 20000.0f, 100.0f);
@@ -100,23 +105,20 @@ namespace
     NumVar s_CloudMipDistanceScale("Graphics/Clouds/Noise Mip Distance Scale", 0.004f, 0.0f, 0.05f, 0.001f);
     BoolVar s_EnableCloudShadow("Graphics/Clouds/Shadow/Enable", true);
     NumVar s_CloudShaftDistanceKm("Graphics/Clouds/Shadow/Shaft Distance (km)", 16.0f, 0.0f, 64.0f, 1.0f);
+#pragma endregion
 
-    const uint32_t kShadowMapSize = 1024;
-    const D3D12_RESOURCE_STATES kShaderResourceState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+#pragma region BRICK_OCCUPANCY
+    const uint32_t kBrickVoxels = 8;
+    const uint32_t kSectorBricks = 4;
+    const uint32_t kMaxBrickDistance = 4;
 
-    ColorBuffer s_ShadowMap(Color(0.0f, 0.0f, 0.0f, 0.0f));
-    CloudShadowConstants s_ShadowConstants = {};
+    ComputePSO s_CloudBrickOccupancyPSO(L"Clouds: Brick Occupancy CS");
+#ifdef BRICK_DISTANCE_FIELD
+    ComputePSO s_CloudBrickDistancePSO(L"Clouds: Brick Distance CS");
+#else
+    ComputePSO s_CloudSectorOccupancyPSO(L"Clouds: Sector Occupancy CS");
+#endif
 
-    ColorBuffer s_CloudHistory[2];
-    ColorBuffer s_CloudDepthHistory[2];
-    ColorBuffer s_CloudRenderTarget;
-    ColorBuffer s_CloudDepthRenderTarget;
-
-    const uint32_t kAmortizationSize = 4;//한 축
-
-    TextureRef s_NoiseTexture; //128*128*128 노이즈 RGBA 각각
-    VolumeBuffer s_CloudVolume; //R: Dimensional Profile, G: Detail Type, B: Density Scale 512*512*64  
-    bool s_bTexturesValid = false;
 
     VolumeBuffer s_BrickOccupancy;
 #ifdef BRICK_DISTANCE_FIELD
@@ -128,6 +130,60 @@ namespace
     uint32_t s_DirtyVoxelMin[3];
     uint32_t s_DirtyVoxelMax[3];
     bool s_bOccupancyDirty = true;
+
+#pragma endregion
+
+
+#pragma region AMORTIZATION
+    ColorBuffer s_CloudHistory[2];
+    ColorBuffer s_CloudDepthHistory[2];
+    ColorBuffer s_CloudRenderTarget;
+    ColorBuffer s_CloudDepthRenderTarget;
+
+    const uint32_t kAmortizationSize = 4;//한 축
+
+    GraphicsPSO s_CloudReprojectionPSO(L"Clouds: Reprojection PSO");
+    GraphicsPSO s_CloudAmortizationPSO(L"Clouds: Amortization PSO");
+#pragma endregion
+
+#pragma region SIMULATION
+    __declspec(align(16)) struct CloudSimulationConstants
+    {
+        uint32_t WindowOrigin[3];
+        float DeltaTime;
+
+        float EventCenter[3];
+        float EventRadius;
+
+        float EventStrength;
+        float Drag;
+        uint32_t bEventActive;
+        uint32_t bResetVelocity;
+    };
+
+    static const uint32_t kSimulationWindowSize = 64;
+    ComputePSO s_CloudSimulationVelocityPSO(L"Clouds: Simulation Velocity CS");
+    ComputePSO s_CloudSimulationAdvectionPSO(L"Clouds: Simulation Advection CS");
+    ComputePSO s_CloudSimulationWriteBackPSO(L"Clouds: Simulation WriteBack CS");
+
+    BoolVar s_SimulationTrigger("Graphics/Clouds/Simulation/Trigger Explosion", false);
+    NumVar s_SimulationEventX("Graphics/Clouds/Simulation/EventX ", 0.5f, 0.0f, 1.0f, 0.01f);
+    NumVar s_SimulationEventZ("Graphics/Clouds/Simulation/EventZ ", 0.5f, 0.0f, 1.0f, 0.01f);
+    NumVar s_SimulationEventY("Graphics/Clouds/Simulation/EventY ", 0.5f, 0.0f, 1.0f, 0.01f);
+    NumVar s_SimulationEventRadius("Graphics/Clouds/Simulation/Radius (m) ", 120.0f, 15.0f, 256.0f, 8.0f);
+
+    NumVar s_SimulationEventStrength("Graphics/Clouds/Simulation/Strength ", 200.0f, 0.0f, 1000.0f, 10.0f);
+    NumVar s_SimulationEventDrag("Graphics/Clouds/Simulation/Drag ", 1.0f, 0.0f, 10.0f, 0.1f);
+    NumVar s_SimulationEventDuration("Graphics/Clouds/Simulation/Duration ", 8.0f, 1.0f, 30.0f, 1.0f);
+
+    VolumeBuffer s_SimulationVelocity[2];
+    VolumeBuffer s_SimulationDensity;
+    uint32_t s_VoxelCount[3];
+    float s_VoxelMeters;
+    uint32_t s_SimulationWindowOrigin[3];
+    float s_SimulationEventCenter[3];
+    float s_SimulationTimeLeft = 0.0f;
+#pragma endregion
 
     enum DebugVolume
     {
@@ -249,6 +305,7 @@ void Clouds::Initialize(void)
     s_RootSig[kSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 14);
     s_RootSig[kUAVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 0, 6);
     s_RootSig[kOccupancyConstants].InitAsConstants(5, 4);
+    s_RootSig[kSimulationCBV].InitAsConstantBuffer(6);
     s_RootSig.Finalize(L"Clouds");
 
     s_DebugViewVolumePSO.SetRootSignature(s_RootSig);
@@ -356,6 +413,28 @@ void Clouds::Initialize(void)
     SetVolumeDirty(VoxelMin, VoxelCount);
     s_bOccupancyDirty = true;
 
+
+
+    s_CloudSimulationVelocityPSO.SetRootSignature(s_RootSig);
+    s_CloudSimulationVelocityPSO.SetComputeShader(g_pCloudSimulationVelocityCS, sizeof(g_pCloudSimulationVelocityCS));
+    s_CloudSimulationVelocityPSO.Finalize();
+
+    s_CloudSimulationAdvectionPSO.SetRootSignature(s_RootSig);
+    s_CloudSimulationAdvectionPSO.SetComputeShader(g_pCloudSimulationAdvectionCS, sizeof(g_pCloudSimulationAdvectionCS));
+    s_CloudSimulationAdvectionPSO.Finalize();
+
+    s_CloudSimulationWriteBackPSO.SetRootSignature(s_RootSig);
+    s_CloudSimulationWriteBackPSO.SetComputeShader(g_pCloudSimulationWriteBackCS, sizeof(g_pCloudSimulationWriteBackCS));
+    s_CloudSimulationWriteBackPSO.Finalize();
+
+    for (int i = 0; i < 3; ++i) {
+        s_VoxelCount[i] = VoxelCount[i];
+    }
+    s_VoxelMeters = kCloudBoundsSize[0] / VoxelCount[0];
+
+    s_SimulationVelocity[0].Create(L"Cloud Simulation Velocity 0", kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
+    s_SimulationVelocity[1].Create(L"Cloud Simulation Velocity 1", kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
+    s_SimulationDensity.Create(L"Cloud Simulation Density", kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 1, ModelingDesc.Format);
 }
 
 void Clouds::Shutdown(void)
@@ -376,6 +455,11 @@ void Clouds::Shutdown(void)
 #else
     s_SectorOccupancy.Destroy();
 #endif
+
+    s_SimulationVelocity[0].Destroy();
+    s_SimulationVelocity[1].Destroy();
+    s_SimulationDensity.Destroy();
+
 }
 
 void Clouds::Render(GraphicsContext& Context, const Math::Camera& Camera, const D3D12_VIEWPORT& Viewport, const D3D12_RECT& Scissor)
@@ -504,7 +588,7 @@ void Clouds::UpdateOccupancy(ComputeContext& Context)
     for (int i = 0; i < 3; ++i)
     {
         BrickMin[i] = (s_DirtyVoxelMin[i] > 0 ? s_DirtyVoxelMin[i] - 1 : 0) / kBrickVoxels;
-        BrickMax[i] = min(s_DirtyVoxelMax[i]/kBrickVoxels-1, s_BrickCount[i]);
+        BrickMax[i] = min(s_DirtyVoxelMax[i] / kBrickVoxels + 1, s_BrickCount[i]);
 
         DistanceMin[i] = (BrickMin[i] > kMaxBrickDistance) ? BrickMin[i] - kMaxBrickDistance : 0;
         DistanceMax[i] = min(BrickMax[i] + kMaxBrickDistance, s_BrickCount[i]);
@@ -570,6 +654,87 @@ void Clouds::UpdateOccupancy(ComputeContext& Context)
 
 
 	s_bOccupancyDirty = false;
+}
+
+void Clouds::UpdateSimulation(ComputeContext& Context)
+{
+    const bool bEventActive = s_SimulationTrigger;
+    if (bEventActive)
+    {
+        const float EventNorm[3] = { s_SimulationEventX, s_SimulationEventZ, s_SimulationEventY };
+        for(int i = 0; i < 3; ++i)
+        {
+            s_SimulationEventCenter[i] = EventNorm[i] * s_VoxelCount[i];
+            const int Origin = (int)s_SimulationEventCenter[i] - (int)kSimulationWindowSize / 2;
+            s_SimulationWindowOrigin[i] = (uint32_t)(max(0, min(Origin, (int)(s_VoxelCount[i] - kSimulationWindowSize))));
+        }
+        s_SimulationTimeLeft = s_SimulationEventDuration;
+
+        s_SimulationTrigger = false;
+
+    }
+
+    if (s_SimulationTimeLeft <= 0.0f)
+        return;
+
+    ScopedTimer _prof(L"CLoud Silumation Activated", Context);
+
+    const float DeltaTime = Graphics::GetFrameTime();
+    s_SimulationTimeLeft -= DeltaTime;
+    
+    CloudSimulationConstants Constants = {};
+    Constants.DeltaTime = DeltaTime;
+    Constants.EventRadius = s_SimulationEventRadius / s_VoxelMeters;
+    Constants.EventStrength = s_SimulationEventStrength / s_VoxelMeters;
+    Constants.Drag = s_SimulationEventDrag;
+    Constants.bEventActive = bEventActive ? 1 : 0;
+    Constants.bResetVelocity = bEventActive ? 1 : 0;
+
+    for (int i = 0; i < 3; ++i) {
+        Constants.WindowOrigin[i] = s_SimulationWindowOrigin[i];
+        Constants.EventCenter[i] = s_SimulationEventCenter[i];
+    }
+
+    VolumeBuffer& PrevVelocity = s_SimulationVelocity[(uint32_t)Graphics::GetFrameCount() % 2];
+    VolumeBuffer& Velocity = s_SimulationVelocity[((uint32_t)Graphics::GetFrameCount()+1) % 2];
+
+    Context.SetRootSignature(s_RootSig);
+    Context.SetDynamicConstantBufferView(kSimulationCBV, sizeof(CloudSimulationConstants), &Constants);
+
+    //Velocity
+    Context.TransitionResource(PrevVelocity, kShaderResourceState);
+    Context.TransitionResource(Velocity, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+    Context.SetPipelineState(s_CloudSimulationVelocityPSO);
+    Context.SetDynamicDescriptor(kSRVs, 6, PrevVelocity.GetSRV());
+    Context.SetDynamicDescriptor(kUAVs, 0, Velocity.GetUAV());
+    Context.Dispatch3D(kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 4, 4, 4);
+
+    //Advection
+    Context.TransitionResource(Velocity, kShaderResourceState);
+    Context.TransitionResource(s_SimulationDensity, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+    Context.SetPipelineState(s_CloudSimulationAdvectionPSO);
+    Context.SetDynamicDescriptor(kSRVs, 5, s_CloudVolume.GetSRV());
+    Context.SetDynamicDescriptor(kSRVs, 6, Velocity.GetSRV());
+    Context.SetDynamicDescriptor(kUAVs, 0, s_SimulationDensity.GetUAV());
+    Context.Dispatch3D(kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 4, 4, 4);
+
+    //WriteBack
+    Context.TransitionResource(s_SimulationDensity, kShaderResourceState);
+    Context.TransitionResource(s_CloudVolume, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+    Context.SetPipelineState(s_CloudSimulationWriteBackPSO);
+    Context.SetDynamicDescriptor(kSRVs, 6, s_SimulationDensity.GetSRV());
+    Context.SetDynamicDescriptor(kUAVs, 0, s_CloudVolume.GetUAV());
+    Context.Dispatch3D(kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 4, 4, 4);
+
+    Context.TransitionResource(s_CloudVolume, kShaderResourceState);
+
+    const uint32_t WindowMax[3] = {
+        s_SimulationWindowOrigin[0] + kSimulationWindowSize,
+        s_SimulationWindowOrigin[1] + kSimulationWindowSize ,
+        s_SimulationWindowOrigin[2] + kSimulationWindowSize };
+
+    SetVolumeDirty(s_SimulationWindowOrigin, WindowMax);
+
 }
 
 void Clouds::SetVolumeDirty(const uint32_t VoxelMin[3], const uint32_t VoxelMax[3])
