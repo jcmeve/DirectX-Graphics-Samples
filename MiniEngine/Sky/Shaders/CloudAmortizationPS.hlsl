@@ -115,9 +115,9 @@ PS_OUT main(float4 Position : SV_Position, float2 UV : TEXCOORD0)
     float WeightedDistance = 0.0;
     float WeightSum = 0.0;
     
-    float LightJitter = InterleavedGradientNoise(Pixel + kLightJitterPixelOffset, FrameIndex);
+    float LightJitter = 0.0; //InterleavedGradientNoise(Pixel + kLightJitterPixelOffset, FrameIndex);
     
-    float t = Hit.x + InterleavedGradientNoise(Pixel, FrameIndex) * max(1.0, sqrt(Hit.x) * StepScale);
+    float t = Hit.x; //+ InterleavedGradientNoise(Pixel, FrameIndex) * max(1.0, sqrt(Hit.x) * StepScale);
     #if 1  
         OccupancyGrid Grid = GetOccupancyGrid();
     #endif

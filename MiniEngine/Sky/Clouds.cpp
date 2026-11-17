@@ -112,7 +112,7 @@ namespace
     BoolVar s_EnableCloudShadow("Graphics/Clouds/Shadow/Enable", true);
     NumVar s_CloudShaftDistanceKm("Graphics/Clouds/Shadow/Shaft Distance (km)", 16.0f, 0.0f, 64.0f, 1.0f);
 
-    NumVar s_GlobalWindSpeed("Graphics/Clouds/Wind/Speed(m/s)", 0.0f, 0.0f, 100.0f, 10.0f);
+    NumVar s_GlobalWindSpeed("Graphics/Clouds/Wind/Speed(m/s)", 0.0f, 0.0f, 100.0f, 100.0f);
     NumVar s_GlobalWindDirection("Graphics/Clouds/Wind/Direction", 90.0f, 0.0f, 360.0f, 5.0f);
     float s_GlobalWindOffset[3] = {};
     float s_GlobalWindDeltaMeters[3] = {};

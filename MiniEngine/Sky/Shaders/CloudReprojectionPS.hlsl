@@ -167,7 +167,16 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     //else
     //    FinalColor = float4(0.2, 0.2, 0.2, 1.0);
     //FinalColor = float4(bDisoccluded, HistoryWeight, 0, 1);
-    CurrentCloud[Pixel] = FinalColor;
+    
+    if (bFresh)
+    {
+        CurrentCloud[Pixel] = MarchedNearColor;
+        CurrentCloudDepth[Pixel] = OutputDepth;
+        return MarchedNearColor;
+    }
+    
+    
+    CurrentCloud[Pixel] = MarchedNearColor;
     CurrentCloudDepth[Pixel] = OutputDepth;
     return FinalColor;
 }
