@@ -1,13 +1,13 @@
-#ifndef CLOUD_COMMON_HLSLI
+ï»¿#ifndef CLOUD_COMMON_HLSLI
 #define CLOUD_COMMON_HLSLI
 
 cbuffer CloudConstants : register(b3)
 {
     float3 BoundsMin; //m
-    float Extinction; //¼Ò¸ê °è¼ö (1/m)
+    float Extinction; //ì†Œë©¸ ê³„ìˆ˜ (1/m)
 
     float3 BoundsSize; //m
-    float StepScale; // ±âº» ½ºÅÜ = max(1, sqrt(°Å¸®) * StepScale)
+    float StepScale; // ê¸°ë³¸ ìŠ¤í… = max(1, sqrt(ê±°ë¦¬) * StepScale)
 
     float3 CameraPosition; //m
     float WorldToMeters;
@@ -18,7 +18,7 @@ cbuffer CloudConstants : register(b3)
     uint FrameIndex;
 };
 
-Texture3D<float4> CloudNoise : register(t4); // RG = Curly-Alligator Àú/°íÁÖÆÄ, BA = Alligator Àú/°íÁÖÆÄ
+Texture3D<float4> CloudNoise : register(t4); // RG = Curly-Alligator ì €/ê³ ì£¼íŒŒ, BA = Alligator ì €/ê³ ì£¼íŒŒ
 Texture3D<float4> CloudModeling : register(t5); // R = Dimensional Profile, G = Detail Type, B = Density Scale
 
 Texture3D<float> CloudBrickOccupancy : register(t12);
@@ -93,7 +93,7 @@ float GetOccupancySkipDistance(float3 LocalPosition, float3 Dir, OccupancyGrid G
     int3 Brick = clamp(int3(floor(LocalPosition / Grid.BrickMeters)), 0, Grid.BrickCount - 1);
     int3 Sector = Brick / int(kSectorBricks);
 
-    //ºó ¿µ¿ª °Ë»ç
+    //ë¹ˆ ì˜ì—­ ê²€ì‚¬
     if (CloudSectorOccupancy[Sector.xzy] <= 0.0)
     {
         return GetCellExitDistance(LocalPosition, Dir, Grid.SectorMeters) + kCellExitBias;
@@ -110,11 +110,11 @@ float GetOccupancySkipDistance(float3 LocalPosition, float3 Dir, OccupancyGrid G
 SamplerState LinearClampSampler : register(s0);
 SamplerState LinearWrapSampler : register(s1);
 
-static const float kNoiseFrequency = 0.01; // ³ëÀÌÁî 100m Å¸ÀÏ
+static const float kNoiseFrequency = 0.01; // ë…¸ì´ì¦ˆ 100m íƒ€ì¼
 static const float kHFDetailDistance = 150.0;
 static const float kNoiseTexelMeters = 1.0 / (kNoiseFrequency * 128.0);
 static const float kCloudEpsilon = 1e-4;
-static const uint kAmortizationSize = 4; //ÇÑ Ãà
+static const uint kAmortizationSize = 4; //í•œ ì¶•
 
 static const uint Bayer4x4[16] = { 0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5 };
 
@@ -146,7 +146,7 @@ float GetFractionFromValue(float Value, float Min, float Max)
     return saturate((Value - Min) / (Max - Min));
 }
 
-// ¿ùµåxyz->ÅØ½ºÃÄxzy
+// ì›”ë“œxyz->í…ìŠ¤ì³xzy
 float3 ToVolumeUVW(float3 Coord)
 {
     return Coord.xzy;
@@ -190,7 +190,7 @@ float GetUprezzedVoxelCloudDensity(float3 SamplePosition, float Distance, float 
     {
         float HHFNoise = saturate(lerp(1.0 - pow(abs(abs(Noise.g * 2.0 - 1.0) * 2.0 - 1.0), 4.0),
             pow(abs(abs(Noise.a * 2.0 - 1.0) * 2.0 - 1.0), 2.0), Type));
-        //Nubis3ÀÇ 150¹ÌÅÍ ±×´ë·Î 
+        //Nubis3ì˜ 150ë¯¸í„° ê·¸ëŒ€ë¡œ 
         float HHFBlend = ValueRemap(Distance, 50.0, 150.0, 0.9, 1.0);
         NoiseComposite = lerp(HHFNoise, NoiseComposite, HHFBlend);
     }
@@ -200,7 +200,7 @@ float GetUprezzedVoxelCloudDensity(float3 SamplePosition, float Distance, float 
     float PoweredDensityScale = pow(saturate(DensityScale), 4.0);
     Density *= DensityScale; //PoweredDensityScale;
 
-    // °æ°è ¼±¸íÈ­
+    // ê²½ê³„ ì„ ëª…í™”
     Density = pow(Density, lerp(0.3, 0.6, max(kCloudEpsilon, PoweredDensityScale)));
     if (bHFDetails)
     {
@@ -211,7 +211,7 @@ float GetUprezzedVoxelCloudDensity(float3 SamplePosition, float Distance, float 
     return Density;
 }
 
-// x = profile ¹Ğµµ, y = ³ëÀÌÁî °è»ê µÈ ¹Ğµµ
+// x = profile ë°€ë„, y = ë…¸ì´ì¦ˆ ê³„ì‚° ëœ ë°€ë„
 float2 GetVoxelCloudDensity(float3 Coord, float3 SamplePosition, float Distance)
 {
     float3 Modeling = CloudModeling.SampleLevel(LinearClampSampler, ToVolumeUVW(Coord), 0).rgb;
@@ -219,10 +219,10 @@ float2 GetVoxelCloudDensity(float3 Coord, float3 SamplePosition, float Distance)
     if (Profile <= 0.0)
         return 0.0;
 
-    // °Å¸® ±â¹İ ¹Ó
+    // ê±°ë¦¬ ê¸°ë°˜ ë°‰
     float MipLevel = log2(1.0 + Distance * MipDistanceScale);
     
-    // ±¸¸§ °¡±î¿öÁö¸é Åõ¸íÇÏ°Ô ºí·»µù
+    // êµ¬ë¦„ ê°€ê¹Œì›Œì§€ë©´ íˆ¬ëª…í•˜ê²Œ ë¸”ë Œë”©
     float Full = GetUprezzedVoxelCloudDensity(SamplePosition, Distance, MipLevel, Profile, Modeling.g, Modeling.b, Distance < kHFDetailDistance)
         * ValueRemap(Distance, 10.0, 120.0, 0.25, 1.0);
     return float2(Profile * Modeling.b, Full);

@@ -1,4 +1,4 @@
-#include "Clouds.h"
+Ôªø#include "Clouds.h"
 #include "RootSignature.h"
 #include "PipelineState.h"
 #include "CommandContext.h"
@@ -91,7 +91,7 @@ namespace
     ColorBuffer s_ShadowMap(Color(0.0f, 0.0f, 0.0f, 0.0f));
     CloudShadowConstants s_ShadowConstants = {};
 
-    TextureRef s_NoiseTexture; //128*128*128 ≥Î¿Ã¡Ó RGBA ∞¢∞¢
+    TextureRef s_NoiseTexture; //128*128*128 ÎÖ∏Ïù¥Ï¶à RGBA Í∞ÅÍ∞Å
     VolumeBuffer s_CloudVolume; //R: Dimensional Profile, G: Detail Type, B: Density Scale 512*512*64  
     bool s_bTexturesValid = false;
 
@@ -144,7 +144,7 @@ namespace
     ColorBuffer s_CloudRenderTarget;
     ColorBuffer s_CloudDepthRenderTarget;
 
-    const uint32_t kAmortizationSize = 4;//«— √‡
+    const uint32_t kAmortizationSize = 4;//Ìïú Ï∂ï
 
     GraphicsPSO s_CloudReprojectionPSO(L"Clouds: Reprojection PSO");
     GraphicsPSO s_CloudAmortizationPSO(L"Clouds: Amortization PSO");
@@ -253,14 +253,14 @@ namespace
         const Vector3 Center = BoxMin + BoxSize * 0.5f;
         const float Radius = (float)Length(BoxSize) * 0.5f;
 
-        // ±§ø¯ ∞¯∞£ basis
+        // Í¥ëÏõê Í≥µÍ∞Ñ basis
         const Vector3 Sun = Normalize(SunDirection);
         const Vector3 RefUp = (fabsf((float)Sun.GetY()) < 0.99f) ? Vector3(kYUnitVector) : Vector3(kXUnitVector);
         const Vector3 Right = Normalize(Cross(RefUp, Sun));
         const Vector3 Up = Cross(Sun, Right);
         const Vector3 Origin = Center + Sun * Radius;
 
-        // π⁄Ω∫ ≤¿¡˛¡° 8∞≥∏¶ ±§ø¯ ∆Ú∏Èø° ≈ıøµ«ÿ ∏  øµø™ ∞·¡§
+        // Î∞ïÏä§ Íº≠ÏßìÏ†ê 8Í∞úÎ•º Í¥ëÏõê ÌèâÎ©¥Ïóê Ìà¨ÏòÅÌï¥ Îßµ ÏòÅÏó≠ Í≤∞Ï†ï
         float RectMin[2] = { FLT_MAX, FLT_MAX };
         float RectMax[2] = { -FLT_MAX, -FLT_MAX };
         for (int Corner = 0; Corner < 8; ++Corner)
@@ -297,7 +297,7 @@ namespace
 
 void Clouds::Initialize(void)
 {
-    // s0 = µπˆ±◊ ∫‰øÎ Clamp, s1 = ≈∏¿œ∏µ ≥Î¿Ã¡Ó ¡∂»∏øÎ Wrap
+    // s0 = ÎîîÎ≤ÑÍ∑∏ Î∑∞Ïö© Clamp, s1 = ÌÉÄÏùºÎßÅ ÎÖ∏Ïù¥Ï¶à Ï°∞ÌöåÏö© Wrap
     s_RootSig.Reset(kNumRootBindings, 2);
     s_RootSig.InitStaticSampler(0, SamplerLinearClampDesc);
     s_RootSig.InitStaticSampler(1, SamplerLinearWrapDesc);
@@ -530,7 +530,7 @@ void Clouds::Render(GraphicsContext& Context, const Math::Camera& Camera, const 
         Context.SetViewportAndScissor(Viewport, Scissor);
 
         ScopedTimer _prof3(L"Reprojection PS", Context);
-        // t0~t2 Atmosphereø° πŸ¿Œµ˘ ¿ß¿”
+        // t0~t2 AtmosphereÏóê Î∞îÏù∏Îî© ÏúÑÏûÑ
         Atmosphere::BindSkyInputs(Context, kAtmosphereCBV, kViewCBV, kSRVs);
         Context.TransitionResource(s_CloudRenderTarget, kShaderResourceState);
         Context.TransitionResource(s_CloudDepthRenderTarget, kShaderResourceState);

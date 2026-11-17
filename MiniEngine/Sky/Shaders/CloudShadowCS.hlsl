@@ -1,4 +1,4 @@
-#include "CloudCommon.hlsli"
+﻿#include "CloudCommon.hlsli"
 #include "CloudShadowCommon.hlsli"
 
 RWTexture2D<float4> CloudShadowMap : register(u0);

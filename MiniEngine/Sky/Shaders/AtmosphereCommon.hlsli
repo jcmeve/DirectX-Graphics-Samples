@@ -1,4 +1,4 @@
-#ifndef ATMOSPHERE_COMMON_HLSLI
+ï»¿#ifndef ATMOSPHERE_COMMON_HLSLI
 #define ATMOSPHERE_COMMON_HLSLI
 
 static const float kPi = 3.14159265;
@@ -26,7 +26,7 @@ cbuffer AtmosphereConstants : register(b0)
     float3 GroundAlbedo;
     float OzoneHalfWidth;
     
-    //Çà¼º
+    //í–‰ì„±
     float BottomRadius;
     float TopRadius;
     float2 AtmosphereConstantsPad;
@@ -40,7 +40,7 @@ struct OpticalCoefficients
 };
 
 
-// °íµµ h¿¡¼­ ºû °¨¼Ò ¹èÀ² ¹× »ê¶õµµ °è»ê
+// ê³ ë„ hì—ì„œ ë¹› ê°ì†Œ ë°°ìœ¨ ë° ì‚°ë€ë„ ê³„ì‚°
 OpticalCoefficients GetOpticalCoefficients(float h)
 {
     float RayleighDensity = exp(-h / RayleighScaleHeight);
@@ -62,7 +62,7 @@ float GetSunVisibility(float3 Pos)
 }
 
 
-// ·¹ÀÌ¿Í ±¸ÀÇ ±³Â÷ÁöÁ¡±îÁöÀÇ °Å¸® Áß ¸Õ °Í
+// ë ˆì´ì™€ êµ¬ì˜ êµì°¨ì§€ì ê¹Œì§€ì˜ ê±°ë¦¬ ì¤‘ ë¨¼ ê²ƒ
 float RaySphereFar(float3 Origin, float3 Dir, float Radius)
 {
     float DirOriginDot = dot(Dir, Origin);
@@ -73,7 +73,7 @@ float RaySphereFar(float3 Origin, float3 Dir, float Radius)
     return -DirOriginDot + sqrt(SquaredDistance);
 }
 
-//·¹ÀÌ¿Í ±¸ÀÇ ±³Â÷ÁöÁ¡±îÁöÀÇ °Å¸® Áß °¡±î¿î °Í
+//ë ˆì´ì™€ êµ¬ì˜ êµì°¨ì§€ì ê¹Œì§€ì˜ ê±°ë¦¬ ì¤‘ ê°€ê¹Œìš´ ê²ƒ
 float RaySphereNear(float3 Origin, float3 Dir, float Radius)
 {
     float DirOriginDot = dot(Dir, Origin);
@@ -84,7 +84,7 @@ float RaySphereNear(float3 Origin, float3 Dir, float Radius)
     return (t >= 0.0) ? t : -1.0;
 }
 
-//´ë±â ³¡ ¸¶Äª ±¸°£ÀÌ Àû¾î µÚÆ²¸®´Â °Í º¸Á¤
+//ëŒ€ê¸° ë ë§ˆì¹­ êµ¬ê°„ì´ ì ì–´ ë’¤í‹€ë¦¬ëŠ” ê²ƒ ë³´ì •
 bool MoveToTopAtmosphere(inout float3 Origin, float3 Dir)
 {
     float Height = length(Origin);
@@ -119,11 +119,11 @@ float HenyeyGreenstein(float CosTheta, float G)
     return (1.0 - G2) / (4.0 * kPi * pow(max(1.0 + G2 - 2.0 * G * CosTheta, 1e-4), 1.5));
 }
 
-//ºñ¼±Çü ¸ÊÇÎÀÌ´Ù. UV.y´Â ÇöÀç À§Ä¡ÀÇ ÁöÇ¥¸é ±âÁØ °íµµ [0,1] UV.x´Â ½Ã¼± ¹æÇâÀ¸·Î ´ë±â¿ÜºÎ¿ÍÀÇ °Å¸®[0,1]
-//°á°ú·Î ³ª¿À´Â rÀº ÇöÀç À§Ä¡ÀÇ ½ÇÁ¦ °íµµ, Mu´Â ÃµÁ¤°¢
+//ë¹„ì„ í˜• ë§µí•‘ì´ë‹¤. UV.yëŠ” í˜„ì¬ ìœ„ì¹˜ì˜ ì§€í‘œë©´ ê¸°ì¤€ ê³ ë„ [0,1] UV.xëŠ” ì‹œì„  ë°©í–¥ìœ¼ë¡œ ëŒ€ê¸°ì™¸ë¶€ì™€ì˜ ê±°ë¦¬[0,1]
+//ê²°ê³¼ë¡œ ë‚˜ì˜¤ëŠ” rì€ í˜„ì¬ ìœ„ì¹˜ì˜ ì‹¤ì œ ê³ ë„, MuëŠ” ì²œì •ê°
 void UvToRmu(float2 UV, out float r, out float Mu)
 {
-    //ÁöÆò¼± ±îÁöÀÇ °Å¸®
+    //ì§€í‰ì„  ê¹Œì§€ì˜ ê±°ë¦¬
     float H = sqrt(TopRadius * TopRadius - BottomRadius * BottomRadius);
     float Rho = H * UV.y;
     r = sqrt(Rho * Rho + BottomRadius * BottomRadius);
@@ -163,7 +163,7 @@ float SubUvToUnit(float u, float Resolution)
     return (u - 0.5 / Resolution) * (Resolution / (Resolution - 1.0));
 }
 
-// y´Â °íµµ [0~1] Á¤±ÔÈ­, x´Â ÅÂ¾ç°¢µµ -1~1À» [0,1]·Î
+// yëŠ” ê³ ë„ [0~1] ì •ê·œí™”, xëŠ” íƒœì–‘ê°ë„ -1~1ì„ [0,1]ë¡œ
 float3 SampleMultiScattering(Texture2D<float4> Lut, SamplerState LinearClamp, float r, float SunMu)
 {
     float2 UV = saturate(float2(SunMu * 0.5 + 0.5, (r - BottomRadius) / (TopRadius - BottomRadius)));
@@ -199,8 +199,8 @@ float3 IntegrateScatteredLuminance(Texture2D<float4> TransmittanceLut, Texture2D
         float r = length(SamplePos);
         OpticalCoefficients Coefficients = GetOpticalCoefficients(r - BottomRadius);
 
-        float SunMu = dot(SamplePos / r, SunDir);//ÃµÁ¤°¢
-        float PlanetShadow = (RaySphereNear(SamplePos, SunDir, BottomRadius) > 0.0) ? 0.0 : 1.0;//Çà¼º°ú ´êÀº °æ¿ì ÅÂ¾ç °¡½Ã¼º 0
+        float SunMu = dot(SamplePos / r, SunDir);//ì²œì •ê°
+        float PlanetShadow = (RaySphereNear(SamplePos, SunDir, BottomRadius) > 0.0) ? 0.0 : 1.0;//í–‰ì„±ê³¼ ë‹¿ì€ ê²½ìš° íƒœì–‘ ê°€ì‹œì„± 0
         float3 SunTransmittance = SampleTransmittance(TransmittanceLut, LinearClamp, r, SunMu) * PlanetShadow;
         if (bUseSunVisibility)
         {
@@ -213,7 +213,7 @@ float3 IntegrateScatteredLuminance(Texture2D<float4> TransmittanceLut, Texture2D
               SunTransmittance * (Coefficients.RayleighScattering * PhaseR + Coefficients.MieScattering * PhaseM)
             + MultiScattering * (Coefficients.RayleighScattering + Coefficients.MieScattering));//
 
-        float3 StepTransmittance = exp(-Coefficients.TotalExtinction * StepSize);//±¸°£ Åõ°úÀ²
+        float3 StepTransmittance = exp(-Coefficients.TotalExtinction * StepSize);//êµ¬ê°„ íˆ¬ê³¼ìœ¨
         Luminance += Throughput * (InScattering - InScattering * StepTransmittance) / max(Coefficients.TotalExtinction, 1e-6);
         Throughput *= StepTransmittance;
     }
@@ -224,14 +224,14 @@ float3 IntegrateScatteredLuminance(Texture2D<float4> TransmittanceLut, Texture2D
 
 
 
-//UV->CosÃµÁ¤°¢,CosÅÂ¾çÁË¿ì°¢
+//UV->Così²œì •ê°,Cosíƒœì–‘ì£„ìš°ê°
 void UvToSkyViewParams(float2 UV, float ViewHeight, out float ViewZenithCos, out float LightViewCos)
 {
     UV = float2(SubUvToUnit(UV.x, kSkyViewLutSize.x), SubUvToUnit(UV.y, kSkyViewLutSize.y));
 
     float HorizonDistance = sqrt(max(0.0, ViewHeight * ViewHeight - BottomRadius * BottomRadius));
-    float Beta = acos(saturate(HorizonDistance / ViewHeight)); // ÁöÆò¼±¿¡¼­ ¹ß ¾Æ·¡±îÁöÀÇ °¢µµ
-    float ZenithHorizonAngle = kPi - Beta; // ÃµÁ¤°¢
+    float Beta = acos(saturate(HorizonDistance / ViewHeight)); // ì§€í‰ì„ ì—ì„œ ë°œ ì•„ë˜ê¹Œì§€ì˜ ê°ë„
+    float ZenithHorizonAngle = kPi - Beta; // ì²œì •ê°
 
     if (UV.y < 0.5)
     {
@@ -249,7 +249,7 @@ void UvToSkyViewParams(float2 UV, float ViewHeight, out float ViewZenithCos, out
     LightViewCos = -(CoordX * 2.0 - 1.0);
 }
 
-// À§ ÇÔ¼öÀÇ ¿ª ÃµÁ¤°¢+ÅÂ¾ç°¢µµ->UV
+// ìœ„ í•¨ìˆ˜ì˜ ì—­ ì²œì •ê°+íƒœì–‘ê°ë„->UV
 float2 SkyViewParamsToUv(bool bIntersectGround, float ViewZenithCos, float LightViewCos, float ViewHeight)
 {
     float HorizonDistance = sqrt(max(0.0, ViewHeight * ViewHeight - BottomRadius * BottomRadius));
@@ -274,7 +274,7 @@ float2 SkyViewParamsToUv(bool bIntersectGround, float ViewZenithCos, float Light
     return float2(UnitToSubUv(UV.x, kSkyViewLutSize.x), UnitToSubUv(UV.y, kSkyViewLutSize.y));
 }
 
-// °Å¸®(km) -> Aerial Perspective º¼·ı 
+// ê±°ë¦¬(km) -> Aerial Perspective ë³¼ë¥¨ 
 float4 SampleAerialPerspective(Texture3D<float4> Volume, SamplerState LinearClamp, float2 UV, float DistanceKm)
 {
     float Slice = DistanceKm / kAerialPerspectiveMaxDistanceKm * kAerialPerspectiveSliceCount;
@@ -289,7 +289,7 @@ float4 SampleAerialPerspective(Texture3D<float4> Volume, SamplerState LinearClam
 }
 
 
-//ÁÂÇ¥±â¹İ ÀÇ»ç³­¼ö»ı¼ºÇÔ¼ö, ±ÕÀÏÇÏ°í ¼º´ÉÀÌ ÁÁ´Ù.
+//ì¢Œí‘œê¸°ë°˜ ì˜ì‚¬ë‚œìˆ˜ìƒì„±í•¨ìˆ˜, ê· ì¼í•˜ê³  ì„±ëŠ¥ì´ ì¢‹ë‹¤.
 float InterleavedGradientNoise(float2 Pixel, uint Frame)
 {
     Pixel += 5.588238 * (float) (Frame % 64);

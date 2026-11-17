@@ -1,4 +1,4 @@
-#include "AtmosphereCommon.hlsli"
+Ôªø#include "AtmosphereCommon.hlsli"
 #include "SkyViewCommon.hlsli"
 
 static const int kSkySteps = 128;
@@ -10,7 +10,7 @@ SamplerState LinearClampSampler : register(s0);
 float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
 {
 
-    //∑π¿Ã∏∂ƒ™
+    //Î†àÏù¥ÎßàÏπ≠
     float3 Dir = GetWorldViewDir(UV);
     float3 Origin = CameraPositionKm;
     float CosTheta = dot(Dir, SunDirection);

@@ -1,4 +1,4 @@
-#pragma once
+ï»¿#pragma once
 
 #include <d3d12.h>
 
@@ -26,7 +26,7 @@ namespace Atmosphere
 
 	Math::Vector3 ComputeSunTransmittance(float AltitudeKm, const Math::Vector3& SunDirection);
 
-	//¿ÜºÎ¿¡¼­ ÇÊ¿ä ½Ã ¹ÙÀÎµù
+	//ì™¸ë¶€ì—ì„œ í•„ìš” ì‹œ ë°”ì¸ë”©
 	void BindSkyInputs(GraphicsContext& Context, UINT AtmosphereCBV, UINT ViewCBV, UINT SRVTable);
 
 	void SetCloudShadow(D3D12_CPU_DESCRIPTOR_HANDLE ShadowMapSRV, const CloudShadowConstants& Constants);

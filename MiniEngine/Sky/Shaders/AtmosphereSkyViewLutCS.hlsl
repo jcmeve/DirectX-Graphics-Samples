@@ -1,4 +1,4 @@
-#include "AtmosphereCommon.hlsli"
+ï»¿#include "AtmosphereCommon.hlsli"
 #include "SkyViewCommon.hlsli"
 
 static const int kSkyViewLutSteps = 64;
@@ -22,7 +22,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
     float ViewZenithCos, LightViewCos;
     UvToSkyViewParams(UV, ViewHeight, ViewZenithCos, LightViewCos);
 
-    // Ä«¸Ş¶ó ±âÁØ ·ÎÄÃ ÁÂÇ¥°è: À§ = +Y, ÅÂ¾çÀº +X ÂÊ XY Æò¸é À§
+    // ì¹´ë©”ë¼ ê¸°ì¤€ ë¡œì»¬ ì¢Œí‘œê³„: ìœ„ = +Y, íƒœì–‘ì€ +X ìª½ XY í‰ë©´ ìœ„
     float SunZenithCos = dot(CameraPositionKm / ViewHeight, SunDirection);
     float3 LocalSunDir = float3(sqrt(saturate(1.0 - SunZenithCos * SunZenithCos)), SunZenithCos, 0.0);
 

@@ -1,4 +1,4 @@
-#include "CloudSimulationCommon.hlsli"
+ï»¿#include "CloudSimulationCommon.hlsli"
 
 Texture3D<float4> PrevVelocity : register(t6);
 RWTexture3D<float4> Velocity : register(u0);
@@ -18,7 +18,7 @@ void main( uint3 DTid : SV_DispatchThreadID )
     {
         float3 Back = Pos - PrevVelocity[DTid].xyz * DeltaTime;
         
-        //ÀÌÀü ÁöÁ¡¿¡¼­ »ùÇÃ¸µ
+        //ì´ì „ ì§€ì ì—ì„œ ìƒ˜í”Œë§
         V = PrevVelocity.SampleLevel(LinearClampSampler, Back / kSimulationWindowSize, 0).xyz;
         V *= exp(-Drag * DeltaTime);
     }

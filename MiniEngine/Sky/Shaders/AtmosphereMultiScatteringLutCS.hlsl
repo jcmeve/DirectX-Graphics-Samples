@@ -1,4 +1,4 @@
-#include "AtmosphereCommon.hlsli"
+ï»¿#include "AtmosphereCommon.hlsli"
 
 static const uint kSqrtDirectionCount = 8;
 static const uint kDirectionCount = kSqrtDirectionCount * kSqrtDirectionCount;
@@ -72,7 +72,7 @@ void main( uint3 DTid : SV_DispatchThreadID )
     float r = BottomRadius + saturate(UV.y + 0.01) * (TopRadius - BottomRadius-0.01);
     float3 Origin = float3(0.0, r, 0.0);
     
-    //360µµ µÎ ÃàÀ¸·Î 8°³¾¿ ÃÑ 64°÷ °Ë»ç
+    //360ë„ ë‘ ì¶•ìœ¼ë¡œ 8ê°œì”© ì´ 64ê³³ ê²€ì‚¬
     uint DirIndex = DTid.z;
     float RandA = (DirIndex / kSqrtDirectionCount + 0.5) / kSqrtDirectionCount;
     float RandB = (DirIndex % kSqrtDirectionCount + 0.5) / kSqrtDirectionCount;
@@ -83,8 +83,8 @@ void main( uint3 DTid : SV_DispatchThreadID )
     float3 SecondOrder, Transfer;
     IntegrateDirection(Origin, Dir, SunDir, SecondOrder, Transfer);
     
-    //ÀÔÃ¼°¢À¸·Î °¢ Á¶»çÁöÁ¡ ÀûºĞ
-    const float SolidAnglePerDirection = 4.0 * kPi / kDirectionCount; //ÀÔÃ¼°¢
+    //ì…ì²´ê°ìœ¼ë¡œ ê° ì¡°ì‚¬ì§€ì  ì ë¶„
+    const float SolidAnglePerDirection = 4.0 * kPi / kDirectionCount; //ì…ì²´ê°
     s_SecondOrder[DirIndex] = SecondOrder * SolidAnglePerDirection;
     s_Transfer[DirIndex] = Transfer * SolidAnglePerDirection;
     

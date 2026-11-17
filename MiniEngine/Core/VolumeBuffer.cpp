@@ -1,4 +1,4 @@
-#include "pch.h"
+ï»¿#include "pch.h"
 #include "GraphicsCore.h"
 #include "VolumeBuffer.h"
 
@@ -41,7 +41,7 @@ void VolumeBuffer::Create(const std::wstring& Name, uint32_t Width, uint32_t Hei
 
     Graphics::g_Device->CreateShaderResourceView(Resource, &SRVDesc, m_SRVHandle);
 
-    // ¹Ó ·¹º§¸¶´Ù UAV
+    // ë°‰ ë ˆë²¨ë§ˆë‹¤ UAV
     D3D12_UNORDERED_ACCESS_VIEW_DESC UAVDesc = {};
     UAVDesc.Format = GetUAVFormat(Format);
     UAVDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE3D;

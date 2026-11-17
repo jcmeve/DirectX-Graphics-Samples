@@ -1,4 +1,4 @@
-#ifndef SKY_VIEW_COMMON_HLSLI
+ï»¿#ifndef SKY_VIEW_COMMON_HLSLI
 #define SKY_VIEW_COMMON_HLSLI
 
 #include "AtmosphereCommon.hlsli"
@@ -24,7 +24,7 @@ cbuffer SkyViewConstants : register(b2)
 };
 
 
-//UV¿¡¼­ °Å²Ù·Î ¿ùµå °ø°£ º¤ÅÍ·Î º¯È¯
+//UVì—ì„œ ê±°ê¾¸ë¡œ ì›”ë“œ ê³µê°„ ë²¡í„°ë¡œ ë³€í™˜
 float3 GetWorldViewDir(float2 UV)
 {
     float2 Ndc = float2(UV.x * 2.0 - 1.0, 1.0 - UV.y * 2.0);
@@ -33,7 +33,7 @@ float3 GetWorldViewDir(float2 UV)
     return normalize(FarPos.xyz / FarPos.w - NearPos.xyz / NearPos.w);
 }
 
-//UV, Depth·Î ¿ø·¡ Æ÷Áö¼Ç °è»ê, Near Face¿ÍÀÇ °Å¸® °è»ê
+//UV, Depthë¡œ ì›ë˜ í¬ì§€ì…˜ ê³„ì‚°, Near Faceì™€ì˜ ê±°ë¦¬ ê³„ì‚°
 float GetSceneViewDistance(float2 UV, float Depth)
 {
     if (Depth <= 0.0)

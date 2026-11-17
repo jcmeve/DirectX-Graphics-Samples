@@ -1,4 +1,4 @@
-#include "AtmosphereCommon.hlsli"
+ï»¿#include "AtmosphereCommon.hlsli"
 
 static const int kTransmittanceSteps = 40;
 
@@ -27,7 +27,7 @@ void main( uint3 DTid : SV_DispatchThreadID )
     {
         float3 SamplePos = Origin + Dir * ((i + 0.5) * StepSize);
         float Height = length(SamplePos) - BottomRadius;
-        //³ôÀÌÀÇ ºû °¨¼ÒÀ² * µ¨Å¸
+        //ë†’ì´ì˜ ë¹› ê°ì†Œìœ¨ * ë¸íƒ€
         OpticalDepth += GetOpticalCoefficients(Height).TotalExtinction * StepSize;
     }
 

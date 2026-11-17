@@ -1,4 +1,4 @@
-#include "AtmosphereCloudShadow.hlsli"
+ï»¿#include "AtmosphereCloudShadow.hlsli"
 
 Texture3D<float4> AerialPerspectiveVolume : register(t3);
 Texture2D<float> SceneDepth : register(t4);
@@ -16,7 +16,7 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     float DistanceKm = GetSceneViewDistance(UV, Depth) * AerialPerspectiveWorldToKm;
     float4 AerialPerspective = SampleAerialPerspective(AerialPerspectiveVolume, LinearClampSampler, UV, DistanceKm);
 
-    // ±¸¸§ ±×¸²ÀÚ ºûÁÙ±â Aerial Perspective¿¡¼­ •û¼­ Ç¥Çö
+    // êµ¬ë¦„ ê·¸ë¦¼ì ë¹›ì¤„ê¸° Aerial Perspectiveì—ì„œ ëº´ì„œ í‘œí˜„
     AerialPerspective.rgb -= SampleAtmosphereShadow(AtmosphereShadowVolume, LinearClampSampler, UV, DistanceKm);
     return float4(max(AerialPerspective.rgb, 0.0), AerialPerspective.a);
 }

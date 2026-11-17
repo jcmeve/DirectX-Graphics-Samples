@@ -1,4 +1,4 @@
-#include "SkyViewCommon.hlsli"
+ï»¿#include "SkyViewCommon.hlsli"
 #include "CloudCommon.hlsli"
 
 Texture2D<float4> TransmittanceLut : register(t0);
@@ -47,7 +47,7 @@ float GetSunScattering(float LightDepth, float CosTheta)
     return Result;
 }
 
-// ÅÂ¾ç ¹æÇâ ·¹ÀÌ¸¶Äª
+// íƒœì–‘ ë°©í–¥ ë ˆì´ë§ˆì¹­
 float GetLightOpticalDepth(float3 RelPos, float ViewDistance, float Jitter)
 {
     float OpticalDepth = 0.0;
@@ -84,7 +84,7 @@ PS_OUT main(float4 Position : SV_Position, float2 UV : TEXCOORD0)
     Ret.Color = 0.0;
     Ret.Depth = 0.0;
     
-    //ÇöÀç ÀÌ ÇÈ¼¿ÀÌ ¿øº»ÀÇ ¾î¶² °÷ÀÎÁö °è»ê
+    //í˜„ì¬ ì´ í”½ì…€ì´ ì›ë³¸ì˜ ì–´ë–¤ ê³³ì¸ì§€ ê³„ì‚°
     uint2 FullSize;
     SceneDepth.GetDimensions(FullSize.x, FullSize.y);
   
@@ -94,7 +94,7 @@ PS_OUT main(float4 Position : SV_Position, float2 UV : TEXCOORD0)
     float3 Dir = GetWorldViewDir(_UV);
     float2 Hit = RayBoxIntersect(0.0, Dir, BoundsMin, BoundsMin + BoundsSize);
 
-    //µª½º ¹öÆÛ·Î ±æÀÌ °è»ê
+    //ëìŠ¤ ë²„í¼ë¡œ ê¸¸ì´ ê³„ì‚°
     float SceneDistance = GetSceneViewDistance(_UV, SceneDepth[Pixel]) * WorldToMeters;
     Hit.y = min(Hit.y, SceneDistance);
     if (Hit.x >= Hit.y)
@@ -103,7 +103,7 @@ PS_OUT main(float4 Position : SV_Position, float2 UV : TEXCOORD0)
     }
  
 
-    // ÃµÁ¤ ¹æÇâ ÇÏ´Ã ÈÖµµ¸¦ È¯°æ±¤À¸·Î 
+    // ì²œì • ë°©í–¥ í•˜ëŠ˜ íœ˜ë„ë¥¼ í™˜ê²½ê´‘ìœ¼ë¡œ 
     float ViewHeight = length(CameraPositionKm);
     float3 SkyAmbient = SkyViewLut.SampleLevel(LinearClampSampler, SkyViewParamsToUv(false, 1.0, 1.0, ViewHeight), 0).rgb * AmbientScale;
 
@@ -135,7 +135,7 @@ PS_OUT main(float4 Position : SV_Position, float2 UV : TEXCOORD0)
             continue;   
         }
         #else
-            // SDF·Î ºó °ø°£ °Ç³Ê¶Ù±â
+            // SDFë¡œ ë¹ˆ ê³µê°„ ê±´ë„ˆë›°ê¸°
             float Sdf = SampleCloudSdf(Coord);
             if (Sdf > BaseStep)
             {
@@ -149,7 +149,7 @@ PS_OUT main(float4 Position : SV_Position, float2 UV : TEXCOORD0)
         {
             float StepTransmittance = exp(-Density * Extinction * BaseStep);
 
-            // Multi Scattering ±Ù»ç
+            // Multi Scattering ê·¼ì‚¬
             float LightDepth = GetLightOpticalDepth(RelPos, t, frac(LightJitter + i * kGoldenRatioFrac));
 
             float3 InSun = SunIlluminance * GetSunTransmittance(RelPos);
@@ -188,7 +188,7 @@ PS_OUT main(float4 Position : SV_Position, float2 UV : TEXCOORD0)
         // Aerial Perspective 
         float4 AerialPerspective = SampleAerialPerspective(AerialPerspectiveVolume, LinearClampSampler, _UV, WeightedDistance / WeightSum * 0.001);
 
-        //±¸¸§ ³¢¸®ÀÇ ±×¸²ÀÚ µµÀÔ ½Ã ¿ì¼± Àû¿ë ÇØºÁ¾ßÇÔ
+        //êµ¬ë¦„ ë¼ë¦¬ì˜ ê·¸ë¦¼ì ë„ì… ì‹œ ìš°ì„  ì ìš© í•´ë´ì•¼í•¨
         //AerialPerspective.rgb -= SampleAtmosphereShadow(AerialPerspectiveVolume, LinearClampSampler, _UV, WeightedDistance / WeightSum * 0.001);
         
         Luminance = Luminance * (1.0 - AerialPerspective.a) + AerialPerspective.rgb * Alpha;

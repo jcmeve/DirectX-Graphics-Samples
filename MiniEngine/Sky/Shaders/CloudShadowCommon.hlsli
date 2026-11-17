@@ -1,4 +1,4 @@
-#ifndef CLOUD_SHADOW_COMMON_HLSLI
+ï»¿#ifndef CLOUD_SHADOW_COMMON_HLSLI
 #define CLOUD_SHADOW_COMMON_HLSLI
 
 cbuffer CloudShadowConstants : register(b4)
@@ -19,7 +19,7 @@ float GetBeerShadowTransmittance(float3 Bsm, float LightDepth)
     return exp(-clamp((LightDepth - Bsm.x) * Bsm.y, 0.0, Bsm.z));
 }
 
-// Position->UV,Depth->Åõ°úÀ²
+// Position->UV,Depth->íˆ¬ê³¼ìœ¨
 float GetCloudShadowTransmittance(Texture2D<float4> ShadowMap, SamplerState LinearClamp, float3 PositionMeters)
 {
     float3 ShadowPos = mul(CloudShadowWorldToShadow, float4(PositionMeters, 1.0)).xyz;

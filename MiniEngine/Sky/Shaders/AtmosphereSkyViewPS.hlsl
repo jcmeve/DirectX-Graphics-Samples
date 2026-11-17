@@ -1,4 +1,4 @@
-#include "AtmosphereCloudShadow.hlsli"
+Ôªø#include "AtmosphereCloudShadow.hlsli"
 
 Texture2D<float4> TransmittanceLut : register(t0);
 Texture2D<float4> SkyViewLut : register(t2);
@@ -18,7 +18,7 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_TARGET0
     if (dot(Side, Side) > 1e-8)
     {
         Side = normalize(Side);
-        float3 Forward = normalize(cross(Side, Up)); // Ω√º±¿« ºˆ∆Ú πÊ«‚
+        float3 Forward = normalize(cross(Side, Up)); // ÏãúÏÑ†Ïùò ÏàòÌèâ Î∞©Ìñ•
         float2 LightOnPlane = float2(dot(SunDirection, Forward), dot(SunDirection, Side));
         float LightOnPlaneLength = length(LightOnPlane);
         if (LightOnPlaneLength > 1e-6)
@@ -30,7 +30,7 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_TARGET0
     float2 LutUV = SkyViewParamsToUv(bIntersectGround, ViewZenithCos, LightViewCos, ViewHeight);
     float3 Luminance = SkyViewLut.SampleLevel(LinearClampSampler, LutUV, 0).rgb;
 
-    // ±∏∏ß ±◊∏≤¿⁄ ∫˚¡Ÿ±‚
+    // Íµ¨Î¶Ñ Í∑∏Î¶ºÏûê ÎπõÏ§ÑÍ∏∞
     Luminance = max(Luminance - SampleAtmosphereShadow(AtmosphereShadowVolume, LinearClampSampler, UV, CloudShadowShaftMaxDistanceKm), 0.0);
     
     

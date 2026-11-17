@@ -1,4 +1,4 @@
-#include "AtmosphereCommon.hlsli"
+ï»¿#include "AtmosphereCommon.hlsli"
 #include "SkyViewCommon.hlsli"
 #include "CloudCommon.hlsli"
 #include "../../Core/Shaders/PixelPacking_Velocity.hlsli"
@@ -15,7 +15,7 @@ RWTexture2D<float>  CurrentCloudDepth : register(u1);
 
 RWTexture2D<uint> CloudVelocity : register(u2);
 
-//Amotization PS¿¡¼­ ÀÌ¹ø ÇÁ·¹ÀÓ¿¡ °»½ÅµÈ 1/NÇØ»óµµ ÅØ½ºÃÄ 
+//Amotization PSì—ì„œ ì´ë²ˆ í”„ë ˆì„ì— ê°±ì‹ ëœ 1/Ní•´ìƒë„ í…ìŠ¤ì³ 
 Texture2D<float4> CloudRenderTarget : register(t10);
 Texture2D<float> CloudDepthRenderTarget : register(t11);
 
@@ -56,7 +56,7 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     float3 Dir = GetWorldViewDir(_UV);
     float2 Hit = RayBoxIntersect(0.0, Dir, BoundsMin, BoundsMin + BoundsSize);
 
-    //µª½º ¹öÆÛ·Î ±æÀÌ °è»ê
+    //ëìŠ¤ ë²„í¼ë¡œ ê¸¸ì´ ê³„ì‚°
     float SceneDistance = GetSceneViewDistance(_UV, SceneDepth[uint2(Position.xy)]) * WorldToMeters;
     Hit.y = min(Hit.y, SceneDistance);
     if (Hit.x >= Hit.y)
@@ -74,7 +74,7 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     float CloudDepth = 0;
     float2 PreviusUV = 0;
     float4 ClipPosition = 0;
-    //ÀÌ¹ø ÇÁ·¹ÀÓ¿¡ °»½ÅµÈ °æ¿ì »ç¿ë
+    //ì´ë²ˆ í”„ë ˆì„ì— ê°±ì‹ ëœ ê²½ìš° ì‚¬ìš©
     if (all((Pixel % kAmortizationSize) == SampleOffset))
     {
         CloudDepth = CloudDepthRenderTarget[LowPixel];
@@ -140,7 +140,7 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     : mul(PrevViewProj, float4(Dir, 0.0));
     PreviusUV = float2(ClipPosition.x / ClipPosition.w * 0.5 + 0.5, 0.5 - ClipPosition.y / ClipPosition.w * 0.5);
 
-    //ÀÌÀü ÇÁ·¹ÀÓ¿¡ È­¸é ¹ÛÀÌ¾ú´ø °æ¿ì °¡±î¿î °»½Å°ª »ç¿ë
+    //ì´ì „ í”„ë ˆì„ì— í™”ë©´ ë°–ì´ì—ˆë˜ ê²½ìš° ê°€ê¹Œìš´ ê°±ì‹ ê°’ ì‚¬ìš©
     if (!(ClipPosition.w > 0.0 && all(PreviusUV >= 0.0) && all(PreviusUV <= 1.0)))
     {
         CurrentCloud[Pixel] = MarchedNearColor;
