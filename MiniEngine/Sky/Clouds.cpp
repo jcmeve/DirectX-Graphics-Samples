@@ -112,8 +112,8 @@ namespace
     BoolVar s_EnableCloudShadow("Graphics/Clouds/Shadow/Enable", true);
     NumVar s_CloudShaftDistanceKm("Graphics/Clouds/Shadow/Shaft Distance (km)", 16.0f, 0.0f, 64.0f, 1.0f);
 
-    NumVar s_GlobalWindSpeed("Graphics/Clouds/Wind/Speed(m/s)", 0.0f, 0.0f, 100.0f, 1.0f);
-    NumVar s_GlobalWindDirection("Graphics/Clouds/Wind/Direction", 90.0f, 0.0f, 100.0f, 1.0f);
+    NumVar s_GlobalWindSpeed("Graphics/Clouds/Wind/Speed(m/s)", 0.0f, 0.0f, 100.0f, 10.0f);
+    NumVar s_GlobalWindDirection("Graphics/Clouds/Wind/Direction", 90.0f, 0.0f, 360.0f, 5.0f);
     float s_GlobalWindOffset[3] = {};
     float s_GlobalWindDeltaMeters[3] = {};
 
@@ -678,10 +678,10 @@ void Clouds::UpdateSimulation(ComputeContext& Context)
 
     const float WindRadians = s_GlobalWindDirection * Math::XM_PI / 180.0f;
     s_GlobalWindDeltaMeters[0] = cosf(WindRadians) * s_GlobalWindSpeed * DeltaTime;
-    s_GlobalWindDeltaMeters[1] = sinf(WindRadians) * s_GlobalWindSpeed * DeltaTime;
+    s_GlobalWindDeltaMeters[2] = sinf(WindRadians) * s_GlobalWindSpeed * DeltaTime;
 
     s_GlobalWindOffset[0] = fmodf(s_GlobalWindOffset[0] + s_GlobalWindDeltaMeters[0], kCloudBoundsSize[0]);
-    s_GlobalWindOffset[2] = fmodf(s_GlobalWindOffset[2] + s_GlobalWindDeltaMeters[1], kCloudBoundsSize[2]);
+    s_GlobalWindOffset[2] = fmodf(s_GlobalWindOffset[2] + s_GlobalWindDeltaMeters[2], kCloudBoundsSize[2]);
     const bool bEventActive = s_SimulationTrigger;
     if (bEventActive)
     {
