@@ -198,8 +198,7 @@ float SampleCloudDimensionalProfile(float3 Coord)
 
 float GetUprezzedVoxelCloudDensity(float3 SamplePosition, float Distance, float MipLevel, float Profile, float Type, float DensityScale, bool bHFDetails)
 {
-    float4 Noise = CloudNoise.SampleLevel(LinearWrapSampler, SamplePosition.xzy * kNoiseFrequency, MipLevel);
-
+    float4 Noise = CloudNoise.SampleLevel(LinearWrapSampler, (SamplePosition - GlobalWindOffset).xzy * kNoiseFrequency, MipLevel);
     float WispyNoise = lerp(Noise.r, Noise.g, Profile);
 
     float BillowyTypeGradient = pow(Profile, 0.25);

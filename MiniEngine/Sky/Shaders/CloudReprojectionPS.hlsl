@@ -44,8 +44,8 @@ void WriteCloudVelocity(uint2 Pixel, float Alpha, float PreviusAlpha, float2 Pre
 {
     if (Alpha > kVelocityAlphaThreshold)
         CloudVelocity[Pixel] = PackVelocity(float3(PreviusPixelPos - CurrentPixelPos, 0.0));
-    //else if (PreviusAlpha - Alpha > kVelocityAlphaThreshold)
-    //    CloudVelocity[Pixel] = PackVelocity(float3(0.0, 0.0, kHistoryResetDepth));
+    else if (PreviusAlpha - Alpha > kVelocityAlphaThreshold)
+        CloudVelocity[Pixel] = PackVelocity(float3(0.0, 0.0, kHistoryResetDepth));
     else
         CloudVelocity[Pixel] = kNoCloudVelocity;
 }
