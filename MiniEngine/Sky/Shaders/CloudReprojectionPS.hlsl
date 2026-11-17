@@ -24,8 +24,7 @@ static const float kMotionSensitive = 0.1;
 static const float kMarchedColorChangeSensitive = 20.0;
 
 static const uint kNoCloudVelocity = 0xFFFFFFFF;
-static const float kVelocityAlphaThreshold = 0.05;
-static const float kHistoryResetDepth = 1.0;
+static const float kVelocityAlphaThreshold = 1.0 / 255.0;
 
 float2 GetPreviusUV(float3 Dir, float Depth, out float4 ClipPosition)
 {
@@ -42,12 +41,18 @@ float GetPreviusAlpha(float2 PreviusUV)
 
 void WriteCloudVelocity(uint2 Pixel, float Alpha, float PreviusAlpha, float2 PreviusPixelPos, float2 CurrentPixelPos)
 {
-    if (Alpha > kVelocityAlphaThreshold)
-        CloudVelocity[Pixel] = PackVelocity(float3(PreviusPixelPos - CurrentPixelPos, 0.0));
-    else if (PreviusAlpha - Alpha > kVelocityAlphaThreshold)
-        CloudVelocity[Pixel] = PackVelocity(float3(0.0, 0.0, kHistoryResetDepth));
-    else
-        CloudVelocity[Pixel] = kNoCloudVelocity;
+    CloudVelocity[Pixel] = (max(Alpha, PreviusAlpha) > kVelocityAlphaThreshold)
+        ? PackVelocity(float3(PreviusPixelPos - CurrentPixelPos, 0.0))
+        : kNoCloudVelocity;
+}
+
+float GetNeighborMaxDepth(int2 LowPixel, int2 LowSize)
+{
+    float MaxDepth = 0.0;
+    for (int y = -1; y <= 1; ++y)
+        for (int x = -1; x <= 1; ++x)
+            MaxDepth = max(MaxDepth, CloudDepthRenderTarget[clamp(LowPixel + int2(x, y), 0, LowSize - 1)]);
+    return MaxDepth;
 }
 
 float4 ClipToAABB(float4 History, float4 BoxMin, float4 BoxMax)
@@ -91,12 +96,13 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     float CloudDepth = 0;
     float2 PreviusUV = 0;
     float4 ClipPosition = 0;
+    float VelocityDepth = GetNeighborMaxDepth(LowPixel, LowSize);
     //이번 프레임에 갱신된 경우 사용
     if (all((Pixel % kAmortizationSize) == SampleOffset))
     {
         CloudDepth = CloudDepthRenderTarget[LowPixel];
         float4 Color = CloudRenderTarget[LowPixel];
-        PreviusUV = GetPreviusUV(Dir, CloudDepth, ClipPosition);
+        PreviusUV = GetPreviusUV(Dir, VelocityDepth, ClipPosition);
 
         CurrentCloud[Pixel] = Color;
         CurrentCloudDepth[Pixel] = CloudDepth;
@@ -135,12 +141,11 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
         {
             int2 SamplePixel = clamp(int2(LowPixel) + int2(x, y), 0, int2(LowSize) - 1);
             float4 SampleColor = CloudRenderTarget[SamplePixel];
-            CloudDepth = max(CloudDepth, CloudDepthRenderTarget[SamplePixel]);
             Moment1 += SampleColor;
             Moment2 += SampleColor * SampleColor;
         }
     }
-                           
+    CloudDepth = VelocityDepth;
     Moment1 /= 9.0;
     Moment2 /= 9.0;
     float4 Sigma = sqrt(max(Moment2 - Moment1 * Moment1, 0.0));
@@ -148,10 +153,6 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     float4 BoxMin = Moment1 - Sigma * kVarianceScale;
     float4 BoxMax = Moment1 + Sigma * kVarianceScale;
     
-    
-    ClipPosition = (CloudDepth > 0.0)
-    ? mul(PrevViewProj, float4(Dir * CloudDepth + CameraDeltaMeters, 1.0))
-    : mul(PrevViewProj, float4(Dir, 0.0));
     PreviusUV = GetPreviusUV(Dir, CloudDepth, ClipPosition);
 
     //이전 프레임에 화면 밖이었던 경우 가까운 갱신값 사용

@@ -1,4 +1,4 @@
-//
+﻿//
 // Copyright (c) Microsoft. All rights reserved.
 // This code is licensed under the MIT License (MIT).
 // THIS CODE IS PROVIDED *AS IS* WITHOUT WARRANTY OF
@@ -159,7 +159,7 @@ void TemporalEffects::ResolveImage( CommandContext& BaseContext )
 
     uint32_t Src = s_FrameIndexMod2;
     uint32_t Dst = Src ^ 1;
-
+    if(EnableTAA)
     {
         ApplyTemporalAA(Context);
         SharpenImage(Context, g_TemporalColor[Dst]);
