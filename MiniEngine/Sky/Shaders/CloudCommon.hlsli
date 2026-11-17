@@ -16,13 +16,20 @@ cbuffer CloudConstants : register(b3)
     float MipDistanceScale;
     uint MaxSteps;
     uint FrameIndex;
+    
+    float3 GlobalWindOffset;//m
+    float CloudPad;
+
+    float3 GlobalWindDeltaMeters;//m
+    float CloudPad2;
+    
 };
 
 Texture3D<float4> CloudNoise : register(t4); // RG = Curly-Alligator 저/고주파, BA = Alligator 저/고주파
 Texture3D<float4> CloudModeling : register(t5); // R = Dimensional Profile, G = Detail Type, B = Density Scale
 
 Texture3D<float> CloudBrickOccupancy : register(t12);
-#define BRICK_DISTANCE_FIELD
+//#define BRICK_DISTANCE_FIELD
 
 #ifdef BRICK_DISTANCE_FIELD
 Texture3D<float> CloudBrickDistance : register(t13);
@@ -69,6 +76,8 @@ float GetCellExitDistance(float3 LocalPosition, float3 Dir, float3 CellMeters)
 
 float GetOccupancySkipDistance(float3 LocalPosition, float3 Dir, OccupancyGrid Grid)
 {
+    LocalPosition -= GlobalWindOffset;
+    LocalPosition.xz -= floor(LocalPosition.xz / BoundsSize.xz) * BoundsSize.xz;
 #ifdef BRICK_DISTANCE_FIELD
     int3 Brick = clamp(int3(floor(LocalPosition / Grid.BrickMeters)), 0, Grid.BrickCount - 1);
     float Distance = CloudBrickDistance[Brick.xzy];
@@ -149,7 +158,19 @@ float GetFractionFromValue(float Value, float Min, float Max)
 // 월드xyz->텍스쳐xzy
 float3 ToVolumeUVW(float3 Coord)
 {
-    return Coord.xzy;
+    float3 Scrolled = Coord - GlobalWindOffset / BoundsSize;
+    Scrolled.xz = frac(Scrolled.xz);
+    return Scrolled.xzy;
+}
+
+float3 SampleCloudModeling(float3 Coord)
+{
+    uint3 VoxelCount;
+    CloudModeling.GetDimensions(VoxelCount.x, VoxelCount.y, VoxelCount.z);
+
+    float3 UVW = ToVolumeUVW(Coord);
+    UVW.z = clamp(UVW.z, 0.5 / VoxelCount.z, 1.0 - 0.5 / VoxelCount.z);
+    return CloudModeling.SampleLevel(LinearWrapSampler, UVW, 0).rgb;
 }
 
 bool IsInsideBounds(float3 Coord)
@@ -162,7 +183,7 @@ float SampleCloudProfile(float3 Coord)
     if (!IsInsideBounds(Coord))
         return 0.0;
 
-    float3 Modeling = CloudModeling.SampleLevel(LinearClampSampler, ToVolumeUVW(Coord), 0).rgb;
+    float3 Modeling = SampleCloudModeling(Coord);
     return Modeling.r * Modeling.b;
 }
 
@@ -171,7 +192,7 @@ float SampleCloudDimensionalProfile(float3 Coord)
     if (!IsInsideBounds(Coord))
         return 0.0;
 
-    float3 Modeling = CloudModeling.SampleLevel(LinearClampSampler, ToVolumeUVW(Coord), 0).rgb;
+    float3 Modeling = SampleCloudModeling(Coord);
     return Modeling.r;
 }
 
@@ -214,7 +235,7 @@ float GetUprezzedVoxelCloudDensity(float3 SamplePosition, float Distance, float 
 // x = profile 밀도, y = 노이즈 계산 된 밀도
 float2 GetVoxelCloudDensity(float3 Coord, float3 SamplePosition, float Distance)
 {
-    float3 Modeling = CloudModeling.SampleLevel(LinearClampSampler, ToVolumeUVW(Coord), 0).rgb;
+    float3 Modeling = SampleCloudModeling(Coord);
     float Profile = Modeling.r;
     if (Profile <= 0.0)
         return 0.0;
@@ -233,7 +254,7 @@ float GetVoxelCloudShadowDensity(float3 Coord, float3 SamplePosition, float MipL
     if (!IsInsideBounds(Coord))
         return 0.0;
 
-    float3 Modeling = CloudModeling.SampleLevel(LinearClampSampler, ToVolumeUVW(Coord), 0).rgb;
+    float3 Modeling = SampleCloudModeling(Coord);
     if (Modeling.r <= 0.0)
         return 0.0;
 
