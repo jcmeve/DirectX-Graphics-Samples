@@ -31,6 +31,7 @@
 #include "CompiledShaders/CloudSimulationVelocityCS.h"
 #include "CompiledShaders/CloudSimulationAdvectionCS.h"
 #include "CompiledShaders/CloudSimulationWriteBackCS.h"
+#include "CompiledShaders/CloudVelocityMergeCS.h"
 
 using namespace Graphics;
 
@@ -93,6 +94,9 @@ namespace
     TextureRef s_NoiseTexture; //128*128*128 노이즈 RGBA 각각
     VolumeBuffer s_CloudVolume; //R: Dimensional Profile, G: Detail Type, B: Density Scale 512*512*64  
     bool s_bTexturesValid = false;
+
+    ColorBuffer s_CloudVelocity;
+    ComputePSO s_CloudVelocityMergePSO(L"Clouds: Velocity Merge CS");
 
     BoolVar s_EnableClouds("Graphics/Clouds/Enable", true);
     NumVar s_CloudBaseAltitude("Graphics/Clouds/Base Altitude (m)", 2000.0f, 0.0f, 8000.0f, 100.0f);
@@ -388,8 +392,11 @@ void Clouds::Initialize(void)
     InitContext.TransitionResource(s_CloudVolume, kShaderResourceState);
     InitContext.Finish(true);
 
+    s_CloudVelocity.Create(L"Cloud Velocity", Graphics::g_SceneColorBuffer.GetWidth(), ::g_SceneColorBuffer.GetHeight(), 1, DXGI_FORMAT_R32_UINT);
 
-
+    s_CloudVelocityMergePSO.SetRootSignature(s_RootSig);
+    s_CloudVelocityMergePSO.SetComputeShader(g_pCloudVelocityMergeCS, sizeof(g_pCloudVelocityMergeCS));
+    s_CloudVelocityMergePSO.Finalize();
 
     for (int i = 0; i < 3; ++i)
         s_BrickCount[i] = (VoxelCount[i] + kBrickVoxels - 1) / kBrickVoxels;
@@ -448,6 +455,7 @@ void Clouds::Shutdown(void)
     s_CloudDepthHistory[1].Destroy();
     s_CloudRenderTarget.Destroy();
     s_CloudDepthRenderTarget.Destroy();
+    s_CloudVelocity.Destroy();
     s_BrickOccupancy.Destroy();
    
 #ifdef BRICK_DISTANCE_FIELD
@@ -526,8 +534,10 @@ void Clouds::Render(GraphicsContext& Context, const Math::Camera& Camera, const 
         Atmosphere::BindSkyInputs(Context, kAtmosphereCBV, kViewCBV, kSRVs);
         Context.TransitionResource(s_CloudRenderTarget, kShaderResourceState);
         Context.TransitionResource(s_CloudDepthRenderTarget, kShaderResourceState);
+        Context.TransitionResource(s_CloudVelocity, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
         Context.SetDynamicDescriptor(kSRVs, 10, s_CloudRenderTarget.GetSRV());
         Context.SetDynamicDescriptor(kSRVs, 11, s_CloudDepthRenderTarget.GetSRV());
+        Context.SetDynamicDescriptor(kUAVs, 2, s_CloudVelocity.GetUAV());
         if ((uint32_t)Graphics::GetFrameCount() % 2)
         {
             Context.TransitionResource(s_CloudHistory[0], kShaderResourceState);
@@ -735,6 +745,23 @@ void Clouds::UpdateSimulation(ComputeContext& Context)
 
     SetVolumeDirty(s_SimulationWindowOrigin, WindowMax);
 
+}
+
+void Clouds::WriteVelocity(ComputeContext& Context)
+{
+    if (!s_EnableClouds || !s_bTexturesValid)
+        return;
+    
+    ScopedTimer _prof(L"Cloud Velocity", Context);
+
+    Context.SetRootSignature(s_RootSig);
+    Context.SetPipelineState(s_CloudVelocityMergePSO);
+
+    Context.TransitionResource(s_CloudVelocity, kShaderResourceState);
+    Context.TransitionResource(g_VelocityBuffer, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+    Context.SetDynamicDescriptor(kSRVs, 0, s_CloudVelocity.GetSRV());
+    Context.SetDynamicDescriptor(kUAVs, 0, g_VelocityBuffer.GetUAV());
+    Context.Dispatch2D(s_CloudVelocity.GetWidth(), s_CloudVelocity.GetHeight(), 8, 8);
 }
 
 void Clouds::SetVolumeDirty(const uint32_t VoxelMin[3], const uint32_t VoxelMax[3])

@@ -440,6 +440,8 @@ void ModelViewer::RenderScene( void )
     // is necessary for all temporal effects (and motion blur).
     MotionBlur::GenerateCameraVelocityBuffer(gfxContext, m_Camera, true);
 
+    Clouds::WriteVelocity(gfxContext.GetComputeContext());
+
     TemporalEffects::ResolveImage(gfxContext);
 
     ParticleEffectManager::Render(gfxContext, m_Camera, g_SceneColorBuffer, g_SceneDepthBuffer,  g_LinearDepth[FrameIndex]);

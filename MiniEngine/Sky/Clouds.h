@@ -25,6 +25,8 @@ namespace Clouds
 
 	void UpdateSimulation(ComputeContext& Context);
 
+	void WriteVelocity(ComputeContext& Context);
+
 	void SetVolumeDirty(const uint32_t VoxelMin[3], const uint32_t VoxelMax[3]);
 
 	void RenderShadowMap(ComputeContext& Context, const Math::Camera& Camera, const Math::Vector3& SunDirection);
