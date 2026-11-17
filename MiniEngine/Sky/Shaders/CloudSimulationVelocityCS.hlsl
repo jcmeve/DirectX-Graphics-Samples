@@ -6,7 +6,7 @@ RWTexture3D<float4> Velocity : register(u0);
 [numthreads(4, 4, 4)]
 void main( uint3 DTid : SV_DispatchThreadID )
 {
-    if (any(DTid == 0) || any(DTid == kSimulationWindowSize))
+    if (any(DTid == 0) || any(DTid == kSimulationWindowSize-1))
     {
         Velocity[DTid] = 0.0;
         return;

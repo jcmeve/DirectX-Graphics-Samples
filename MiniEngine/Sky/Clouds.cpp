@@ -769,7 +769,12 @@ void Clouds::RenderShadowMap(ComputeContext& Context, const Math::Camera& Camera
         Context.SetDynamicDescriptor(kSRVs, 4, s_NoiseTexture.GetSRV());
         Context.SetDynamicDescriptor(kSRVs, 5, s_CloudVolume.GetSRV());
         Context.SetDynamicDescriptor(kSRVs, 12, s_BrickOccupancy.GetSRV());
+#ifdef BRICK_DISTANCE_FIELD   
         Context.SetDynamicDescriptor(kSRVs, 13, s_BrickDistance.GetSRV());
+#else
+        Context.SetDynamicDescriptor(kSRVs, 13, s_SectorOccupancy.GetSRV());
+
+#endif
         Context.SetDynamicDescriptor(kUAVs, 0, s_ShadowMap.GetUAV());
         Context.Dispatch2D(kShadowMapSize, kShadowMapSize, 8, 8);
     }
