@@ -19,6 +19,7 @@ Texture2D<float> CloudDepthRenderTarget : register(t11);
 static const float kColorChangeSensitive = 50.0;//20~30
 static const float kMotionSensitive = 0.1;
 static const float kMarchedColorChangeSensitive = 20.0;
+static const float kFreshHistoryWeight = (kAmortizationSize == 1) ? 0.9 : 0.5;
 
 float4 ClipToAABB(float4 History, float4 BoxMin, float4 BoxMax)
 {
@@ -58,16 +59,9 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     uint2 LowPixel = min(Pixel / kAmortizationSize, LowSize - 1);
     uint2 SampleOffset = GetAmortizationOffset(FrameIndex);
     
-    //이번 프레임에 갱신된 경우 사용
-    if (all((Pixel % kAmortizationSize) == SampleOffset))
-    {
-        float4 Color = CloudRenderTarget[LowPixel];
-        CurrentCloud[Pixel] = Color;
-        CurrentCloudDepth[Pixel] = CloudDepthRenderTarget[LowPixel];
-        return Color;
-    }
+    bool bFresh = all((Pixel % kAmortizationSize) == SampleOffset);
     float2 LowUV = ((Position.xy - SampleOffset - 0.5) / kAmortizationSize + 0.5) / LowSize;
-    float4 MarchedNearColor = CloudRenderTarget.SampleLevel(LinearClampSampler, LowUV, 0);
+    float4 MarchedNearColor = bFresh ? CloudRenderTarget[LowPixel]:CloudRenderTarget.SampleLevel(LinearClampSampler, LowUV, 0);
     
     float CloudDepth = 0;
     
@@ -107,6 +101,8 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
                            
     Moment1 /= 9.0;
     Moment2 /= 9.0;
+    float OutputDepth = bFresh ? CloudDepthRenderTarget[LowPixel] : CloudDepth;
+    
     float4 Sigma = sqrt(max(Moment2 - Moment1 * Moment1, 0.0));
     static const float kVarianceScale = 1.1;
     float4 BoxMin = Moment1 - Sigma * kVarianceScale;
@@ -122,14 +118,14 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     if (!(ClipPosition.w > 0.0 && all(PreviusUV >= 0.0) && all(PreviusUV <= 1.0)))
     {
         CurrentCloud[Pixel] = MarchedNearColor;
-        CurrentCloudDepth[Pixel] = CloudDepth;
+        CurrentCloudDepth[Pixel] = OutputDepth;
         return MarchedNearColor;
     }
     
     float4 PreviusColor = PreviusCloud.SampleLevel(LinearClampSampler, PreviusUV, 0); 
     uint2 PreviusPixel = min(uint2(PreviusUV * TargetSize), TargetSize - 1);
     float PreviusDepth = PreviusCloudDepth[PreviusPixel];
-    bool bDisoccluded = (CloudDepth > 0.0) != (PreviusDepth > 0.0);
+    bool bDisoccluded = (OutputDepth > 0.0) != (PreviusDepth > 0.0);
     
     float MotionPixels = length(PreviusUV * TargetSize - float2(Pixel));
     float ClampWeight = bDisoccluded ? 1.0 : saturate(MotionPixels * kMotionSensitive);
@@ -158,14 +154,18 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     }
     MarchedColorChanged *= 1.0 - ClampWeight;
     float HistoryWeight = saturate(1.0 - max(max(ColorChanged - 0.01, 0.0) * kColorChangeSensitive, MarchedColorChanged*kMarchedColorChangeSensitive));
-    
+
+    if(bDisoccluded)
+        HistoryWeight = 0.0;
+    if(bFresh)
+        HistoryWeight = min(HistoryWeight, kFreshHistoryWeight);
     float4 FinalColor = lerp(MarchedNearColor, ReprojectionColor, HistoryWeight);
     //if (FinalColor.a > 0.1)
     //    //FinalColor = float4(saturate(pow(abs((MarchedNearColor - ReprojectionColor).r) + 1, 1.0) - 1), saturate(pow(abs((MarchedNearColor - ReprojectionColor).g) + 1, 1.0) - 1), saturate(pow(abs((MarchedNearColor - ReprojectionColor).b) + 1, 1.0) - 1), 1.0);
     //    FinalColor = float4(HistoryWeight, 0.0, 0.0, 1);
     //else
     //    FinalColor = float4(0.2, 0.2, 0.2, 1.0);
-    CurrentCloud[Pixel] = lerp(MarchedNearColor, ReprojectionColor, HistoryWeight);
-    CurrentCloudDepth[Pixel] = CloudDepth;
+    CurrentCloud[Pixel] = FinalColor;
+    CurrentCloudDepth[Pixel] = OutputDepth;
     return FinalColor;
 }

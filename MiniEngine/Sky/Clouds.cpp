@@ -152,7 +152,7 @@ namespace
     ColorBuffer s_CloudRenderTarget;
     ColorBuffer s_CloudDepthRenderTarget;
 
-    const uint32_t kAmortizationSize = 4;//한 축
+    const uint32_t kAmortizationSize = 1;//한 축
 
     GraphicsPSO s_CloudReprojectionPSO(L"Clouds: Reprojection PSO");
     GraphicsPSO s_CloudAmortizationPSO(L"Clouds: Amortization PSO");
