@@ -20,7 +20,7 @@
 #include "CompiledShaders/SkyDebugViewVolumePS.h"
 #include "CompiledShaders/CloudShadowCS.h"
 #include "CompiledShaders/CloudBrickOccupancyCS.h"
-#define BRICK_DISTANCE_FIELD
+//#define BRICK_DISTANCE_FIELD
 
 #ifdef BRICK_DISTANCE_FIELD
 #include "CompiledShaders/CloudBrickDistanceCS.h"
@@ -78,6 +78,12 @@ namespace
         float MipDistanceScale;
         uint32_t MaxSteps;
         uint32_t FrameIndex;
+
+        float GlobalWindOffset[3];
+        float CloudPad;
+
+        float GlobalWindDeltaMeters[3];
+        float CloudPad2;
     };
 
     const float kWorldUnitsToMeters = 0.01f; //cm to m
@@ -105,6 +111,12 @@ namespace
     NumVar s_CloudMipDistanceScale("Graphics/Clouds/Noise Mip Distance Scale", 0.004f, 0.0f, 0.05f, 0.001f);
     BoolVar s_EnableCloudShadow("Graphics/Clouds/Shadow/Enable", true);
     NumVar s_CloudShaftDistanceKm("Graphics/Clouds/Shadow/Shaft Distance (km)", 16.0f, 0.0f, 64.0f, 1.0f);
+
+    NumVar s_GlobalWindSpeed("Graphics/Clouds/Wind/Speed(m/s)", 0.0f, 0.0f, 100.0f, 1.0f);
+    NumVar s_GlobalWindDirection("Graphics/Clouds/Wind/Direction", 90.0f, 0.0f, 100.0f, 1.0f);
+    float s_GlobalWindOffset[3] = {};
+    float s_GlobalWindDeltaMeters[3] = {};
+
 #pragma endregion
 
 #pragma region BRICK_OCCUPANCY
@@ -227,6 +239,8 @@ namespace
             Constants.BoundsMin[Axis] = BoundsMin[Axis] - Camera3[Axis];
             Constants.BoundsSize[Axis] = kCloudBoundsSize[Axis];
             Constants.CameraPosition[Axis] = Camera3[Axis];
+            Constants.GlobalWindOffset[Axis] = s_GlobalWindOffset[Axis];
+            Constants.GlobalWindDeltaMeters[Axis] = s_GlobalWindDeltaMeters[Axis];
         }
         Constants.Extinction = s_CloudExtinction;
         Constants.StepScale = s_CloudStepScale;
@@ -235,6 +249,7 @@ namespace
         Constants.MipDistanceScale = s_CloudMipDistanceScale;
         Constants.MaxSteps = (uint32_t)(int)s_CloudMaxSteps;
         Constants.FrameIndex = (uint32_t)Graphics::GetFrameCount();
+        
         return Constants;
     }
 
@@ -616,7 +631,8 @@ void Clouds::UpdateOccupancy(ComputeContext& Context)
 #endif
     Context.SetPipelineState(s_CloudBrickOccupancyPSO);
     Context.SetConstants(kOccupancyConstants, BrickMin[0], BrickMin[1], BrickMin[2]);
-    Context.Dispatch3D(BrickMax[0] - BrickMin[0], BrickMax[1] - BrickMin[1], BrickMax[2] - BrickMin[2], 4, 4, 4);
+    Context.Dispatch(BrickMax[0] - BrickMin[0], BrickMax[1] - BrickMin[1], BrickMax[2] - BrickMin[2]);
+    //Context.Dispatch3D(BrickMax[0] - BrickMin[0], BrickMax[1] - BrickMin[1], BrickMax[2] - BrickMin[2], 4, 4, 4);
     Context.InsertUAVBarrier(s_BrickOccupancy);
 
 #ifdef BRICK_DISTANCE_FIELD
@@ -658,10 +674,23 @@ void Clouds::UpdateOccupancy(ComputeContext& Context)
 
 void Clouds::UpdateSimulation(ComputeContext& Context)
 {
+    const float DeltaTime = Graphics::GetFrameTime();
+
+    const float WindRadians = s_GlobalWindDirection * Math::XM_PI / 180.0f;
+    s_GlobalWindDeltaMeters[0] = cosf(WindRadians) * s_GlobalWindSpeed * DeltaTime;
+    s_GlobalWindDeltaMeters[1] = sinf(WindRadians) * s_GlobalWindSpeed * DeltaTime;
+
+    s_GlobalWindOffset[0] = fmodf(s_GlobalWindOffset[0] + s_GlobalWindDeltaMeters[0], kCloudBoundsSize[0]);
+    s_GlobalWindOffset[2] = fmodf(s_GlobalWindOffset[2] + s_GlobalWindDeltaMeters[1], kCloudBoundsSize[2]);
     const bool bEventActive = s_SimulationTrigger;
     if (bEventActive)
     {
-        const float EventNorm[3] = { s_SimulationEventX, s_SimulationEventZ, s_SimulationEventY };
+        float EventNorm[3] = {
+            s_SimulationEventX - s_GlobalWindOffset[0] / kCloudBoundsSize[0],
+            s_SimulationEventZ - s_GlobalWindOffset[2] / kCloudBoundsSize[2],
+            s_SimulationEventY };
+        EventNorm[0] -= floorf(EventNorm[0]);
+        EventNorm[1] -= floorf(EventNorm[1]);
         for(int i = 0; i < 3; ++i)
         {
             s_SimulationEventCenter[i] = EventNorm[i] * s_VoxelCount[i];
@@ -679,7 +708,6 @@ void Clouds::UpdateSimulation(ComputeContext& Context)
 
     ScopedTimer _prof(L"CLoud Silumation Activated", Context);
 
-    const float DeltaTime = Graphics::GetFrameTime();
     s_SimulationTimeLeft -= DeltaTime;
     
     CloudSimulationConstants Constants = {};

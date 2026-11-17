@@ -6,35 +6,45 @@ cbuffer OccupancyConstants : register(b5)
 
 RWTexture3D<float> BrickOccupancy : register(u0);
 
-[numthreads(4, 4, 4)]
-void main( uint3 DTid : SV_DispatchThreadID )
+static const uint kHaloVoxels = kBrickVoxels + 2;
+static const uint kHaloCount = kHaloVoxels * kHaloVoxels * kHaloVoxels;
+static const uint kGroupThreads = kBrickVoxels * kBrickVoxels * kBrickVoxels;//512
+
+groupshared uint s_MaxDensity;
+
+[numthreads(8, 8, 8)]
+void main( uint3 Groupid : SV_GroupID, uint GroupIndex : SV_GroupIndex )
 {
     uint3 BrickCount;
     BrickOccupancy.GetDimensions(BrickCount.x, BrickCount.y, BrickCount.z);
-    uint3 Brick = RegionMin + DTid;
+    uint3 Brick = RegionMin + Groupid;
     if (any(Brick >= BrickCount))
         return;
     
-    uint3 VoxelCount;
-    CloudModeling.GetDimensions(VoxelCount.x, VoxelCount.y, VoxelCount.z);
+    if(GroupIndex == 0)
+        s_MaxDensity = 0;
+    GroupMemoryBarrierWithGroupSync();
     
-    int3 VoxelMin = int3(Brick * kBrickVoxels) - 1;
-    int3 VoxelMax = int3((Brick + 1) * kBrickVoxels);
+    int3 VoxelCount;
+    CloudModeling.GetDimensions(VoxelCount.x, VoxelCount.y, VoxelCount.z);
     
     float MaxDensity = 0.0;
     
-    for (int z = VoxelMin.z; z <= VoxelMax.z; ++z)
+    for (uint i = GroupIndex; i < kHaloCount; i += kGroupThreads)
     {
-        for (int y = VoxelMin.y; y <= VoxelMax.y; ++y)
-        {
-            for (int x = VoxelMin.x; x <= VoxelMax.x; ++x)
-            {
-                int3 Voxel = clamp(int3(x, y, z), 0, int3(VoxelCount) - 1);
-                float3 Modeling = CloudModeling[Voxel].rgb;
-                MaxDensity = max(MaxDensity, Modeling.r * Modeling.b);
-            }
-        }
+        int3 Local = int3(i % kHaloVoxels, (i / kHaloVoxels) % kHaloVoxels, i / (kHaloVoxels * kHaloVoxels));
+        //int3 Voxel = clamp(int3(Brick * kBrickVoxels) - 1 + Local, 0, VoxelCount - 1);
+        int3 Voxel = int3(Brick * kBrickVoxels) - 1 + Local;
+        Voxel.xz = (Voxel.xz + VoxelCount.xy) % VoxelCount.xy;
+        Voxel.z = clamp(Voxel.z, 0, VoxelCount.z - 1);
+        
+        float3 Modeling = CloudModeling[Voxel].rgb;
+        MaxDensity = max(MaxDensity, Modeling.r * Modeling.b);
     }
-    BrickOccupancy[Brick] = MaxDensity;
+    InterlockedMax(s_MaxDensity, asuint(MaxDensity));
+    GroupMemoryBarrierWithGroupSync();
+    
+    if(GroupIndex == 0)
+        BrickOccupancy[Brick] = asfloat(s_MaxDensity);
 
 }

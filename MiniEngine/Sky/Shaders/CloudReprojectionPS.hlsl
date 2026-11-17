@@ -127,8 +127,12 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     }
     
     float4 PreviusColor = PreviusCloud.SampleLevel(LinearClampSampler, PreviusUV, 0); 
+    uint2 PreviusPixel = min(uint2(PreviusUV * TargetSize), TargetSize - 1);
+    float PreviusDepth = PreviusCloudDepth[PreviusPixel];
+    bool bDisoccluded = (CloudDepth > 0.0) != (PreviusDepth > 0.0);
+    
     float MotionPixels = length(PreviusUV * TargetSize - float2(Pixel));
-    float ClampWeight = saturate(MotionPixels * kMotionSensitive);
+    float ClampWeight = bDisoccluded ? 1.0 : saturate(MotionPixels * kMotionSensitive);
     float4 ReprojectionColor = lerp(PreviusColor, ClipToAABB(PreviusColor, BoxMin, BoxMax), ClampWeight);
     
     float ColorChanged = length(PreviusColor - ReprojectionColor) / (length(PreviusColor) + length(ReprojectionColor) + 1e-5);
