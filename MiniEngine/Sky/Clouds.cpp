@@ -32,6 +32,7 @@
 #include "CompiledShaders/CloudSimulationAdvectionCS.h"
 #include "CompiledShaders/CloudSimulationWriteBackCS.h"
 #include "CompiledShaders/CloudVelocityMergeCS.h"
+#include "CompiledShaders/CloudLightCacheCS.h"
 
 using namespace Graphics;
 
@@ -61,7 +62,7 @@ namespace
     RootSignature s_RootSig;
     GraphicsPSO s_DebugViewVolumePSO(L"Clouds: Debug View Volume PSO");
 
-    ComputePSO s_ShadowMapPSO(L"Clouds: Shadow Map CS");
+
 
 #pragma region CLOUD_DEFAULT
     __declspec(align(16)) struct CloudConstants
@@ -94,8 +95,13 @@ namespace
     const uint32_t kShadowMapSize = 1024;
     const D3D12_RESOURCE_STATES kShaderResourceState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
 
+    const uint32_t kLightCacheRatio = 2;
+
     ColorBuffer s_ShadowMap(Color(0.0f, 0.0f, 0.0f, 0.0f));
     CloudShadowConstants s_ShadowConstants = {};
+    CloudConstants s_CloudConstants = {};
+
+    VolumeBuffer s_LightCacheVolume;
 
     TextureRef s_NoiseTexture; //128*128*128 노이즈 RGBA 각각
     VolumeBuffer s_CloudVolume; //R: Dimensional Profile, G: Detail Type, B: Density Scale 512*512*64  
@@ -103,6 +109,9 @@ namespace
 
     ColorBuffer s_CloudVelocity;
     ComputePSO s_CloudVelocityMergePSO(L"Clouds: Velocity Merge CS");
+    ComputePSO s_ShadowMapPSO(L"Clouds: Shadow Map CS");
+    ComputePSO s_LightCacheVolumePSO(L"Clouds: Light Cache Volume CS");
+
 
     BoolVar s_EnableClouds("Graphics/Clouds/Enable", true);
     NumVar s_CloudBaseAltitude("Graphics/Clouds/Base Altitude (m)", 2000.0f, 0.0f, 8000.0f, 100.0f);
@@ -320,7 +329,7 @@ void Clouds::Initialize(void)
     s_RootSig[kViewCBV].InitAsConstantBuffer(2);
     s_RootSig[kCloudCBV].InitAsConstantBuffer(3);
     s_RootSig[kCloudShadowCBV].InitAsConstantBuffer(4);
-    s_RootSig[kSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 14);
+    s_RootSig[kSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 15);
     s_RootSig[kUAVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 0, 6);
     s_RootSig[kOccupancyConstants].InitAsConstants(5, 4);
     s_RootSig[kSimulationCBV].InitAsConstantBuffer(6);
@@ -379,6 +388,8 @@ void Clouds::Initialize(void)
     s_ShadowMapPSO.SetRootSignature(s_RootSig);
     s_ShadowMapPSO.SetComputeShader(g_pCloudShadowCS, sizeof(g_pCloudShadowCS));
     s_ShadowMapPSO.Finalize();
+
+
 
     s_ShadowMap.Create(L"Cloud Shadow Map", kShadowMapSize, kShadowMapSize, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
     s_CloudHistory[0].Create(L"CloudHistory 0", Graphics::g_SceneColorBuffer.GetWidth(), Graphics::g_SceneColorBuffer.GetHeight(), 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
@@ -456,6 +467,12 @@ void Clouds::Initialize(void)
     s_SimulationVelocity[0].Create(L"Cloud Simulation Velocity 0", kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
     s_SimulationVelocity[1].Create(L"Cloud Simulation Velocity 1", kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
     s_SimulationDensity.Create(L"Cloud Simulation Density", kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 1, ModelingDesc.Format);
+
+    s_LightCacheVolumePSO.SetRootSignature(s_RootSig);
+    s_LightCacheVolumePSO.SetComputeShader(g_pCloudLightCacheCS, sizeof(g_pCloudLightCacheCS));
+    s_LightCacheVolumePSO.Finalize();
+
+    s_LightCacheVolume.Create(L"Cloud Light Cache Volume", VoxelCount[0] / kLightCacheRatio, VoxelCount[1] / kLightCacheRatio, VoxelCount[2] / kLightCacheRatio, 1, DXGI_FORMAT_R32_FLOAT);
 }
 
 void Clouds::Shutdown(void)
@@ -471,6 +488,7 @@ void Clouds::Shutdown(void)
     s_CloudDepthRenderTarget.Destroy();
     s_CloudVelocity.Destroy();
     s_BrickOccupancy.Destroy();
+    s_LightCacheVolume.Destroy();
    
 #ifdef BRICK_DISTANCE_FIELD
     s_BrickDistance.Destroy();
@@ -514,6 +532,8 @@ void Clouds::Render(GraphicsContext& Context, const Math::Camera& Camera, const 
 #else
         Context.TransitionResource(s_SectorOccupancy, kShaderResourceState);
 #endif
+        Context.TransitionResource(s_LightCacheVolume, kShaderResourceState);
+
         const D3D12_CPU_DESCRIPTOR_HANDLE RTVs[] = { s_CloudRenderTarget.GetRTV(),s_CloudDepthRenderTarget.GetRTV()};
         Context.SetRenderTargets(2, RTVs);
         Context.SetViewportAndScissor(0, 0, s_CloudRenderTarget.GetWidth(), s_CloudRenderTarget.GetHeight());
@@ -531,6 +551,9 @@ void Clouds::Render(GraphicsContext& Context, const Math::Camera& Camera, const 
 #else
         Context.SetDynamicDescriptor(kSRVs, 13, s_SectorOccupancy.GetSRV());
 #endif
+
+        Context.SetDynamicDescriptor(kSRVs, 14, s_LightCacheVolume.GetSRV());
+
         Context.Draw(3);
     }
     {
@@ -801,39 +824,60 @@ void Clouds::SetVolumeDirty(const uint32_t VoxelMin[3], const uint32_t VoxelMax[
     s_bOccupancyDirty = true;
 }
 
-void Clouds::RenderShadowMap(ComputeContext& Context, const Math::Camera& Camera, const Math::Vector3& SunDirection)
+void Clouds::RenderShadowMapAndLightCache(ComputeContext& Context, const Math::Camera& Camera, const Math::Vector3& SunDirection)
 {
-    ScopedTimer _prof(L"Cloud Shadow Map", Context);
 
     s_ShadowConstants = BuildShadowConstants(SunDirection);
-
-    Context.TransitionResource(s_ShadowMap, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
-    if (!s_EnableClouds || !s_EnableCloudShadow || !s_bTexturesValid)
+    s_CloudConstants = BuildCloudConstants(Camera);
     {
-        Context.ClearUAV(s_ShadowMap);
-        s_ShadowConstants.ShaftMaxDistanceKm = 0.0f;
+        ScopedTimer _prof(L"Cloud Shadow Map", Context);
+        
+        Context.TransitionResource(s_ShadowMap, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+        if (!s_EnableClouds || !s_EnableCloudShadow || !s_bTexturesValid)
+        {
+            Context.ClearUAV(s_ShadowMap);
+            s_ShadowConstants.ShaftMaxDistanceKm = 0.0f;
+        }
+        else
+        {
+            Context.SetRootSignature(s_RootSig);
+            Context.SetPipelineState(s_ShadowMapPSO);
+            Context.SetDynamicConstantBufferView(kCloudCBV, sizeof(s_CloudConstants), &s_CloudConstants);
+            Context.SetDynamicConstantBufferView(kCloudShadowCBV, sizeof(s_ShadowConstants), &s_ShadowConstants);
+            Context.SetDynamicDescriptor(kSRVs, 4, s_NoiseTexture.GetSRV());
+            Context.SetDynamicDescriptor(kSRVs, 5, s_CloudVolume.GetSRV());
+            Context.SetDynamicDescriptor(kSRVs, 12, s_BrickOccupancy.GetSRV());
+#ifdef BRICK_DISTANCE_FIELD   
+            Context.SetDynamicDescriptor(kSRVs, 13, s_BrickDistance.GetSRV());
+#else
+            Context.SetDynamicDescriptor(kSRVs, 13, s_SectorOccupancy.GetSRV());
+
+#endif
+            Context.SetDynamicDescriptor(kUAVs, 0, s_ShadowMap.GetUAV());
+            Context.Dispatch2D(kShadowMapSize, kShadowMapSize, 8, 8);
+        }
+        Context.TransitionResource(s_ShadowMap, kShaderResourceState);
     }
-    else
+    if (!(!s_EnableClouds || !s_EnableCloudShadow || !s_bTexturesValid))
     {
-        CloudConstants Constants = BuildCloudConstants(Camera);
+        ScopedTimer _prof2(L"Cloud Light Cache", Context);
 
+        Context.TransitionResource(s_LightCacheVolume, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+        
         Context.SetRootSignature(s_RootSig);
-        Context.SetPipelineState(s_ShadowMapPSO);
-        Context.SetDynamicConstantBufferView(kCloudCBV, sizeof(Constants), &Constants);
+        Context.SetPipelineState(s_LightCacheVolumePSO);
+
+        Context.SetDynamicConstantBufferView(kCloudCBV, sizeof(s_CloudConstants), &s_CloudConstants);
         Context.SetDynamicConstantBufferView(kCloudShadowCBV, sizeof(s_ShadowConstants), &s_ShadowConstants);
         Context.SetDynamicDescriptor(kSRVs, 4, s_NoiseTexture.GetSRV());
         Context.SetDynamicDescriptor(kSRVs, 5, s_CloudVolume.GetSRV());
         Context.SetDynamicDescriptor(kSRVs, 12, s_BrickOccupancy.GetSRV());
-#ifdef BRICK_DISTANCE_FIELD   
-        Context.SetDynamicDescriptor(kSRVs, 13, s_BrickDistance.GetSRV());
-#else
-        Context.SetDynamicDescriptor(kSRVs, 13, s_SectorOccupancy.GetSRV());
 
-#endif
-        Context.SetDynamicDescriptor(kUAVs, 0, s_ShadowMap.GetUAV());
-        Context.Dispatch2D(kShadowMapSize, kShadowMapSize, 8, 8);
+        Context.SetDynamicDescriptor(kUAVs, 0, s_LightCacheVolume.GetUAV());
+        Context.Dispatch3D(s_VoxelCount[0] / kLightCacheRatio, s_VoxelCount[1] / kLightCacheRatio, s_VoxelCount[2] / kLightCacheRatio, 4, 4, 4);
+
+        Context.TransitionResource(s_LightCacheVolume, kShaderResourceState);
     }
-    Context.TransitionResource(s_ShadowMap, kShaderResourceState);
 }
 
 D3D12_CPU_DESCRIPTOR_HANDLE Clouds::GetShadowMapSRV(void)

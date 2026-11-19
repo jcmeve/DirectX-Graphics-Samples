@@ -363,7 +363,7 @@ void ModelViewer::RenderScene( void )
 
         Clouds::UpdateSimulation(gfxContext.GetComputeContext());
         Clouds::UpdateOccupancy(gfxContext.GetComputeContext());
-        Clouds::RenderShadowMap(gfxContext.GetComputeContext(), m_Camera, SunDirection);
+        Clouds::RenderShadowMapAndLightCache(gfxContext.GetComputeContext(), m_Camera, SunDirection);
         const CloudShadowConstants& CloudShadow = Clouds::GetShadowConstants();
         Atmosphere::SetCloudShadow(Clouds::GetShadowMapSRV(), CloudShadow);
         globals.CloudShadowMatrix = CloudShadow.WorldToShadow;

@@ -588,6 +588,7 @@ Math::Vector3 Atmosphere::ComputeSunTransmittance(float AltitudeKm, const Math::
 
 void Atmosphere::BindSkyInputs(GraphicsContext& Context, UINT AtmosphereCBV, UINT ViewCBV, UINT SRVTable)
 {
+    
     Context.TransitionResource(s_TransmittanceLut, kShaderResourceState);
     Context.TransitionResource(s_SkyViewLut, kShaderResourceState);
     Context.TransitionResource(s_AerialPerspectiveVolume, kShaderResourceState);

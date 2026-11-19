@@ -92,6 +92,9 @@
     <FxCompile Include="Shaders\SkyFullscreenVS.hlsl">
       <ShaderType>Vertex</ShaderType>
     </FxCompile>
+    <FxCompile Include="Shaders\CloudLightCacheCS.hlsl">
+      <ShaderType>Compute</ShaderType>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Atmosphere.h" />

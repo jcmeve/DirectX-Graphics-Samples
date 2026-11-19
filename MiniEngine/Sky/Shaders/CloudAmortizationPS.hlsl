@@ -5,6 +5,7 @@ Texture2D<float4> TransmittanceLut : register(t0);
 Texture2D<float4> SkyViewLut : register(t1);
 Texture3D<float4> AerialPerspectiveVolume : register(t2);
 Texture2D<float> SceneDepth : register(t3);
+Texture3D<float> CloudLightCache : register(t14);
 
 struct PS_OUT
 {
@@ -150,8 +151,9 @@ PS_OUT main(float4 Position : SV_Position, float2 UV : TEXCOORD0)
             float StepTransmittance = exp(-Density * Extinction * BaseStep);
 
             // Multi Scattering 근사
-            float LightDepth = GetLightOpticalDepth(RelPos, t, frac(LightJitter + i * kGoldenRatioFrac));
-
+//            float LightDepth = GetLightOpticalDepth(RelPos, t, frac(LightJitter + i * kGoldenRatioFrac));
+            float LightDepth = CloudLightCache.SampleLevel(LinearClampSampler, (RelPos - BoundsMin) / BoundsSize, 0);
+            
             float3 InSun = SunIlluminance * GetSunTransmittance(RelPos);
             
             float CloudPhase = saturate(HenyeyGreenstein(CosTheta, 0.75) * 3.0);

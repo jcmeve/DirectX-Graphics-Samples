@@ -29,7 +29,7 @@ namespace Clouds
 
 	void SetVolumeDirty(const uint32_t VoxelMin[3], const uint32_t VoxelMax[3]);
 
-	void RenderShadowMap(ComputeContext& Context, const Math::Camera& Camera, const Math::Vector3& SunDirection);
+	void RenderShadowMapAndLightCache(ComputeContext& Context, const Math::Camera& Camera, const Math::Vector3& SunDirection);
 	D3D12_CPU_DESCRIPTOR_HANDLE GetShadowMapSRV(void);
 	const CloudShadowConstants& GetShadowConstants(void);
 };
