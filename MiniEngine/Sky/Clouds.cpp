@@ -509,6 +509,7 @@ void Clouds::Render(GraphicsContext& Context, const Math::Camera& Camera, const 
         Context.TransitionResource(s_CloudRenderTarget, D3D12_RESOURCE_STATE_RENDER_TARGET, true);
         Context.TransitionResource(s_CloudDepthRenderTarget, D3D12_RESOURCE_STATE_RENDER_TARGET, true);
         Context.TransitionResource(s_BrickOccupancy, kShaderResourceState);
+        Context.TransitionResource(s_ShadowMap, kShaderResourceState);
 #ifdef BRICK_DISTANCE_FIELD
         Context.TransitionResource(s_BrickDistance, kShaderResourceState);
 #else
@@ -522,8 +523,10 @@ void Clouds::Render(GraphicsContext& Context, const Math::Camera& Camera, const 
         Context.SetDynamicDescriptor(kSRVs, 3, g_SceneDepthBuffer.GetDepthSRV());
 
         Context.SetDynamicConstantBufferView(kCloudCBV, sizeof(Constants), &Constants);
+        Context.SetDynamicConstantBufferView(kCloudShadowCBV, sizeof(s_ShadowConstants), &s_ShadowConstants);
         Context.SetDynamicDescriptor(kSRVs, 4, s_NoiseTexture.GetSRV());
         Context.SetDynamicDescriptor(kSRVs, 5, s_CloudVolume.GetSRV());
+        Context.SetDynamicDescriptor(kSRVs, 6, s_ShadowMap.GetSRV());
         Context.SetDynamicDescriptor(kSRVs, 12, s_BrickOccupancy.GetSRV());
 
 #ifdef BRICK_DISTANCE_FIELD

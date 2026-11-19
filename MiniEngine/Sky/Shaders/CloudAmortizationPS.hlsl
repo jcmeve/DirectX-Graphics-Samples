@@ -1,10 +1,12 @@
 ﻿#include "SkyViewCommon.hlsli"
 #include "CloudCommon.hlsli"
+#include "CloudShadowCommon.hlsli"
 
 Texture2D<float4> TransmittanceLut : register(t0);
 Texture2D<float4> SkyViewLut : register(t1);
 Texture3D<float4> AerialPerspectiveVolume : register(t2);
 Texture2D<float> SceneDepth : register(t3);
+Texture2D<float4> CloudShadowMap : register(t6);
 
 struct PS_OUT
 {
@@ -150,8 +152,9 @@ PS_OUT main(float4 Position : SV_Position, float2 UV : TEXCOORD0)
             float StepTransmittance = exp(-Density * Extinction * BaseStep);
 
             // Multi Scattering 근사
-            float LightDepth = GetLightOpticalDepth(RelPos, t, frac(LightJitter + i * kGoldenRatioFrac));
-
+            //float LightDepth = GetLightOpticalDepth(RelPos, t, frac(LightJitter + i * kGoldenRatioFrac));
+            float LightDepth = GetCloudShadowTransmittance(CloudShadowMap, LinearClampSampler, RelPos + CameraPosition);
+            
             float3 InSun = SunIlluminance * GetSunTransmittance(RelPos);
             
             float CloudPhase = saturate(HenyeyGreenstein(CosTheta, 0.75) * 3.0);
