@@ -858,7 +858,7 @@ void Clouds::RenderShadowMapAndLightCache(ComputeContext& Context, const Math::C
         }
         Context.TransitionResource(s_ShadowMap, kShaderResourceState);
     }
-    if (!(!s_EnableClouds || !s_EnableCloudShadow || !s_bTexturesValid))
+    if (s_EnableClouds && s_bTexturesValid)
     {
         ScopedTimer _prof2(L"Cloud Light Cache", Context);
 

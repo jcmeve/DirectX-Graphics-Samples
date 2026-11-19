@@ -48,26 +48,33 @@ float GetSunScattering(float LightDepth, float CosTheta)
     return Result;
 }
 
+float SampleLightCache(float3 RelPos)
+{
+    float3 Coord = (RelPos - BoundsMin) / BoundsSize;
+    if(!IsInsideBounds(Coord))
+        return 0.0;
+    return CloudLightCache.SampleLevel(LinearClampSampler, Coord.xzy, 0);
+
+}
+ 
 // 태양 방향 레이마칭
 float GetLightOpticalDepth(float3 RelPos, float ViewDistance, float Jitter)
 {
     float OpticalDepth = 0.0;
     float Distance = 0.0;
     float StepLength = kLightStepStart;
-    for (int i = 0; i < kLightStepCount; ++i)
+    for (int i = 0; i < kLightErosionStepCount; ++i)
     {
         float3 SampleRelPos = RelPos + SunDirection * (Distance + StepLength * Jitter);
         float3 Coord = (SampleRelPos - BoundsMin) / BoundsSize;
 
-        float Density = (i < kLightErosionStepCount)
-            ? GetVoxelCloudShadowDensity(Coord, SampleRelPos + CameraPosition, GetNoiseMipFromFootprint(StepLength))
-            : SampleCloudProfile(Coord);
+        float Density = GetVoxelCloudShadowDensity(Coord, SampleRelPos + CameraPosition, GetNoiseMipFromFootprint(StepLength));
         OpticalDepth += Density * StepLength;
 
         Distance += StepLength;
         StepLength *= 2.0;
     }
-    return OpticalDepth * Extinction;
+    return OpticalDepth * Extinction + SampleLightCache(RelPos + SunDirection * Distance);
 }
 
 float3 GetSunTransmittance(float3 RelPos)
@@ -151,8 +158,7 @@ PS_OUT main(float4 Position : SV_Position, float2 UV : TEXCOORD0)
             float StepTransmittance = exp(-Density * Extinction * BaseStep);
 
             // Multi Scattering 근사
-//            float LightDepth = GetLightOpticalDepth(RelPos, t, frac(LightJitter + i * kGoldenRatioFrac));
-            float LightDepth = CloudLightCache.SampleLevel(LinearClampSampler, (RelPos - BoundsMin) / BoundsSize, 0);
+            float LightDepth = GetLightOpticalDepth(RelPos, t, frac(LightJitter + i * kGoldenRatioFrac));
             
             float3 InSun = SunIlluminance * GetSunTransmittance(RelPos);
             
