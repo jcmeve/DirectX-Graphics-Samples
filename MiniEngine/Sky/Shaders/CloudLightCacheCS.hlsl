@@ -15,7 +15,7 @@ float GetCacheOpticalDepth(float3 LocalPosition, float3 SunDir, OccupancyGrid Gr
     float OpticalDepth = 0.0;
     float t = kLightStepMeters * 0.5;
     
-    for (int i = 0; i < kLightStepCount && t < Hit.y; ++i)
+    for (uint i = 0; i < kLightStepCount && t < Hit.y; ++i)
     {
         float3 Position = LocalPosition + t * SunDir;
         
@@ -41,6 +41,6 @@ void main( uint3 DTid : SV_DispatchThreadID )
     if(any(DTid>=CacheSize))
         return;
     
-    float3 LocalPosition = (float3(DTid) + 0.5) * float3(CacheSize).xzy+ BoundsSize;
+    float3 LocalPosition = (float3(DTid) + 0.5) / float3(CacheSize).xzy * BoundsSize;
     CloudLightCache[DTid] = GetCacheOpticalDepth(LocalPosition, normalize(CloudShadowSunDirection), GetOccupancyGrid());
 }

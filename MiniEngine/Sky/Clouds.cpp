@@ -851,7 +851,6 @@ void Clouds::RenderShadowMapAndLightCache(ComputeContext& Context, const Math::C
             Context.SetDynamicDescriptor(kSRVs, 13, s_BrickDistance.GetSRV());
 #else
             Context.SetDynamicDescriptor(kSRVs, 13, s_SectorOccupancy.GetSRV());
-
 #endif
             Context.SetDynamicDescriptor(kUAVs, 0, s_ShadowMap.GetUAV());
             Context.Dispatch2D(kShadowMapSize, kShadowMapSize, 8, 8);
@@ -869,10 +868,13 @@ void Clouds::RenderShadowMapAndLightCache(ComputeContext& Context, const Math::C
 
         Context.SetDynamicConstantBufferView(kCloudCBV, sizeof(s_CloudConstants), &s_CloudConstants);
         Context.SetDynamicConstantBufferView(kCloudShadowCBV, sizeof(s_ShadowConstants), &s_ShadowConstants);
-        Context.SetDynamicDescriptor(kSRVs, 4, s_NoiseTexture.GetSRV());
         Context.SetDynamicDescriptor(kSRVs, 5, s_CloudVolume.GetSRV());
         Context.SetDynamicDescriptor(kSRVs, 12, s_BrickOccupancy.GetSRV());
-
+#ifdef BRICK_DISTANCE_FIELD   
+        Context.SetDynamicDescriptor(kSRVs, 13, s_BrickDistance.GetSRV());
+#else
+        Context.SetDynamicDescriptor(kSRVs, 13, s_SectorOccupancy.GetSRV());
+#endif
         Context.SetDynamicDescriptor(kUAVs, 0, s_LightCacheVolume.GetUAV());
         Context.Dispatch3D(s_VoxelCount[0] / kLightCacheRatio, s_VoxelCount[1] / kLightCacheRatio, s_VoxelCount[2] / kLightCacheRatio, 4, 4, 4);
 
