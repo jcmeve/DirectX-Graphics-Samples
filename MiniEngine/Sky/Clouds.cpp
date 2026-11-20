@@ -189,6 +189,12 @@ namespace
         float Drag;
         uint32_t bEventActive;
         uint32_t bResetVelocity;
+
+        float EventHeat;
+        float Buoyancy;//부력
+        float Cooling;
+        float SimulationPad;
+
     };
 
     static const uint32_t kSimulationWindowSize = 64;
@@ -210,6 +216,11 @@ namespace
     IntVar s_SimulationJacobiIterations("Graphics/Clouds/Simulation/Jacobi Iteractions", 30, 2, 80, 2);
     NumVar s_SimulationEventDrag("Graphics/Clouds/Simulation/Drag ", 1.0f, 0.0f, 10.0f, 0.1f);
     NumVar s_SimulationEventDuration("Graphics/Clouds/Simulation/Duration ", 8.0f, 1.0f, 30.0f, 1.0f);
+
+    NumVar s_SimulationEventHeat("Graphics/Clouds/Simulation/Heat ", 1.0f, 0.0f, 10.0f, 0.1f);
+    NumVar s_SimulationEventBuoyancy("Graphics/Clouds/Simulation/Buoyancy ", 5.0f, 0.0f, 50.0f, 0.5f);
+    NumVar s_SimulationEventCooling("Graphics/Clouds/Simulation/Cooling ", 0.2f, 0.0f, 5.0f, 0.05f);
+
 
     VolumeBuffer s_SimulationDivergence;
     VolumeBuffer s_SimulationVelocity[2];
@@ -783,6 +794,9 @@ void Clouds::UpdateSimulation(ComputeContext& Context)
     Constants.Drag = s_SimulationEventDrag;
     Constants.bEventActive = bEventActive ? 1 : 0;
     Constants.bResetVelocity = bEventActive ? 1 : 0;
+    Constants.EventHeat = s_SimulationEventHeat;
+    Constants.Buoyancy = s_SimulationEventBuoyancy;
+    Constants.Cooling = s_SimulationEventCooling;
 
     for (int i = 0; i < 3; ++i) {
         Constants.WindowOrigin[i] = s_SimulationWindowOrigin[i];

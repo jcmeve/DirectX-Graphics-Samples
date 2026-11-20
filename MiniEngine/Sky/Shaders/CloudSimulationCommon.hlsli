@@ -10,6 +10,11 @@ cbuffer SimulationConstants : register(b6)
     float Drag;
     uint bEventActive;
     uint bResetVelocity;
+    
+    float EventHeat;
+    float Buoyancy;//บฮทย
+    float Cooling;
+    float SimulationPad;
 }
 
 static const uint kSimulationWindowSize = 64;
@@ -19,9 +24,13 @@ bool IsInsideWindow(int3 Cell)
 {
     return all(Cell >= 0) && all(Cell < (kSimulationWindowSize));
 }
-
+float GetEventFalloff(float3 VoxelPos)
+{
+    float Falloff = saturate(1.0 - length(VoxelPos - EventCenter) / EventRadius);
+    return Falloff * Falloff;
+}
 float GetExpansionSource(float3 VoxelPos)
 {
     float Falloff = saturate(1.0 - length(VoxelPos - EventCenter) / EventRadius);
-    return EventStrength * Falloff * Falloff;
+    return EventStrength * GetEventFalloff(VoxelPos);
 }
