@@ -23,13 +23,5 @@ void main( uint3 DTid : SV_DispatchThreadID )
         V *= exp(-Drag * DeltaTime);
     }
     
-    if (bEventActive)
-    {
-        float3 ToVoxel = (WindowOrigin + Pos) - EventCenter;
-        float Distance = length(ToVoxel);
-        float DistanceRatio = saturate(1.0 - Distance / EventRadius);
-        if (Distance > 0.0)
-            V += ToVoxel / Distance * EventStrength * DistanceRatio * DistanceRatio;
-    }
     Velocity[DTid] = float4(V, 0.0);
 }

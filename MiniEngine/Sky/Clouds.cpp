@@ -28,11 +28,17 @@
 #include "CompiledShaders/CloudSectorOccupancyCS.h"
 #endif
 
+
+#include "CompiledShaders/CloudVelocityMergeCS.h"
+#include "CompiledShaders/CloudLightCacheCS.h"
+
 #include "CompiledShaders/CloudSimulationVelocityCS.h"
 #include "CompiledShaders/CloudSimulationAdvectionCS.h"
 #include "CompiledShaders/CloudSimulationWriteBackCS.h"
-#include "CompiledShaders/CloudVelocityMergeCS.h"
-#include "CompiledShaders/CloudLightCacheCS.h"
+#include "CompiledShaders/CloudSimulationDivergenceCS.h"
+#include "CompiledShaders/CloudSimulationJacobiCS.h"
+#include "CompiledShaders/CloudSimulationProjectCS.h"
+
 
 using namespace Graphics;
 
@@ -189,19 +195,27 @@ namespace
     ComputePSO s_CloudSimulationVelocityPSO(L"Clouds: Simulation Velocity CS");
     ComputePSO s_CloudSimulationAdvectionPSO(L"Clouds: Simulation Advection CS");
     ComputePSO s_CloudSimulationWriteBackPSO(L"Clouds: Simulation WriteBack CS");
+    ComputePSO s_CloudSimulationDivergencePSO(L"Clouds: Simulation Divergence CS");
+    ComputePSO s_CloudSimulationJacobiPSO(L"Clouds: Simulation Jacobi CS");
+    ComputePSO s_CloudSimulationProjectPSO(L"Clouds: Simulation Project CS");
 
     BoolVar s_SimulationTrigger("Graphics/Clouds/Simulation/Trigger Explosion", false);
     NumVar s_SimulationEventX("Graphics/Clouds/Simulation/EventX ", 0.5f, 0.0f, 1.0f, 0.01f);
     NumVar s_SimulationEventZ("Graphics/Clouds/Simulation/EventZ ", 0.5f, 0.0f, 1.0f, 0.01f);
     NumVar s_SimulationEventY("Graphics/Clouds/Simulation/EventY ", 0.5f, 0.0f, 1.0f, 0.01f);
-    NumVar s_SimulationEventRadius("Graphics/Clouds/Simulation/Radius (m) ", 120.0f, 15.0f, 256.0f, 8.0f);
+    NumVar s_SimulationEventRadius("Graphics/Clouds/Simulation/Radius (m) ", 120.0f, 15.0f, 1024.0f, 8.0f);
 
-    NumVar s_SimulationEventStrength("Graphics/Clouds/Simulation/Strength ", 200.0f, 0.0f, 1000.0f, 10.0f);
+    NumVar s_SimulationEventStrength("Graphics/Clouds/Simulation/Expansion Rate (1 per s) ", 5.0f, 0.0f, 500.0, 0.5f);
+    NumVar s_SimulationExpansionTime("Graphics/Clouds/Simulation/Expansion Time (s) ", 0.3f, 0.05f, 3.0f, 0.05f);
+    IntVar s_SimulationJacobiIterations("Graphics/Clouds/Simulation/Jacobi Iteractions", 30, 2, 80, 2);
     NumVar s_SimulationEventDrag("Graphics/Clouds/Simulation/Drag ", 1.0f, 0.0f, 10.0f, 0.1f);
     NumVar s_SimulationEventDuration("Graphics/Clouds/Simulation/Duration ", 8.0f, 1.0f, 30.0f, 1.0f);
 
+    VolumeBuffer s_SimulationDivergence;
     VolumeBuffer s_SimulationVelocity[2];
+    VolumeBuffer s_SimulationPressure[2];
     VolumeBuffer s_SimulationDensity;
+
     uint32_t s_VoxelCount[3];
     float s_VoxelMeters;
     uint32_t s_SimulationWindowOrigin[3];
@@ -459,6 +473,18 @@ void Clouds::Initialize(void)
     s_CloudSimulationWriteBackPSO.SetComputeShader(g_pCloudSimulationWriteBackCS, sizeof(g_pCloudSimulationWriteBackCS));
     s_CloudSimulationWriteBackPSO.Finalize();
 
+    s_CloudSimulationDivergencePSO.SetRootSignature(s_RootSig);
+    s_CloudSimulationDivergencePSO.SetComputeShader(g_pCloudSimulationDivergenceCS, sizeof(g_pCloudSimulationDivergenceCS));
+    s_CloudSimulationDivergencePSO.Finalize();
+
+    s_CloudSimulationJacobiPSO.SetRootSignature(s_RootSig);
+    s_CloudSimulationJacobiPSO.SetComputeShader(g_pCloudSimulationJacobiCS, sizeof(g_pCloudSimulationJacobiCS));
+    s_CloudSimulationJacobiPSO.Finalize();
+
+    s_CloudSimulationProjectPSO.SetRootSignature(s_RootSig);
+    s_CloudSimulationProjectPSO.SetComputeShader(g_pCloudSimulationProjectCS, sizeof(g_pCloudSimulationProjectCS));
+    s_CloudSimulationProjectPSO.Finalize();
+
     for (int i = 0; i < 3; ++i) {
         s_VoxelCount[i] = VoxelCount[i];
     }
@@ -467,6 +493,9 @@ void Clouds::Initialize(void)
     s_SimulationVelocity[0].Create(L"Cloud Simulation Velocity 0", kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
     s_SimulationVelocity[1].Create(L"Cloud Simulation Velocity 1", kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
     s_SimulationDensity.Create(L"Cloud Simulation Density", kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 1, ModelingDesc.Format);
+    s_SimulationPressure[0].Create(L"Cloud Simulation Pressure 0", kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 1, DXGI_FORMAT_R32_FLOAT);
+    s_SimulationPressure[1].Create(L"Cloud Simulation Pressure 1", kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 1, DXGI_FORMAT_R32_FLOAT);
+    s_SimulationDivergence.Create(L"Cloud Simulation Divergence", kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 1, DXGI_FORMAT_R32_FLOAT);
 
     s_LightCacheVolumePSO.SetRootSignature(s_RootSig);
     s_LightCacheVolumePSO.SetComputeShader(g_pCloudLightCacheCS, sizeof(g_pCloudLightCacheCS));
@@ -499,7 +528,9 @@ void Clouds::Shutdown(void)
     s_SimulationVelocity[0].Destroy();
     s_SimulationVelocity[1].Destroy();
     s_SimulationDensity.Destroy();
-
+    s_SimulationPressure[0].Destroy();
+    s_SimulationPressure[1].Destroy();
+    s_SimulationDivergence.Destroy();
 }
 
 void Clouds::Render(GraphicsContext& Context, const Math::Camera& Camera, const D3D12_VIEWPORT& Viewport, const D3D12_RECT& Scissor)
@@ -739,14 +770,16 @@ void Clouds::UpdateSimulation(ComputeContext& Context)
     if (s_SimulationTimeLeft <= 0.0f)
         return;
 
-    ScopedTimer _prof(L"CLoud Silumation Activated", Context);
+    ScopedTimer _prof(L"Cloud Silumation Activated", Context);
 
+    const float Elapsed = s_SimulationEventDuration - s_SimulationTimeLeft;
+    const float ExpansionRate = (Elapsed < s_SimulationExpansionTime) ? (float)s_SimulationEventStrength : 0.0f;
     s_SimulationTimeLeft -= DeltaTime;
     
     CloudSimulationConstants Constants = {};
     Constants.DeltaTime = DeltaTime;
     Constants.EventRadius = s_SimulationEventRadius / s_VoxelMeters;
-    Constants.EventStrength = s_SimulationEventStrength / s_VoxelMeters;
+    Constants.EventStrength = ExpansionRate;
     Constants.Drag = s_SimulationEventDrag;
     Constants.bEventActive = bEventActive ? 1 : 0;
     Constants.bResetVelocity = bEventActive ? 1 : 0;
@@ -769,6 +802,43 @@ void Clouds::UpdateSimulation(ComputeContext& Context)
     Context.SetDynamicDescriptor(kSRVs, 6, PrevVelocity.GetSRV());
     Context.SetDynamicDescriptor(kUAVs, 0, Velocity.GetUAV());
     Context.Dispatch3D(kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 4, 4, 4);
+
+    //Divergence
+    Context.TransitionResource(Velocity, kShaderResourceState);
+    Context.TransitionResource(s_SimulationDivergence, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+    Context.TransitionResource(s_SimulationPressure[0], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+    Context.SetPipelineState(s_CloudSimulationDivergencePSO);
+    Context.SetDynamicDescriptor(kSRVs, 6, Velocity.GetSRV());
+    Context.SetDynamicDescriptor(kUAVs, 0, s_SimulationDivergence.GetUAV());
+    Context.SetDynamicDescriptor(kUAVs, 1, s_SimulationPressure[0].GetUAV());
+    Context.Dispatch3D(kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 4, 4, 4);
+
+    //Jacobi
+    Context.TransitionResource(s_SimulationDivergence, kShaderResourceState);
+    Context.SetPipelineState(s_CloudSimulationJacobiPSO);
+    Context.SetDynamicDescriptor(kSRVs, 7, s_SimulationDivergence.GetSRV());
+
+    const int JacobiIterations = (s_SimulationJacobiIterations + 1) & ~1;
+    for (int i = 0; i < JacobiIterations; ++i) {
+        VolumeBuffer& Src = s_SimulationPressure[i % 2];
+        VolumeBuffer& Dst = s_SimulationPressure[(i + 1) % 2];
+        Context.TransitionResource(Src, kShaderResourceState);
+        Context.TransitionResource(Dst, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+        Context.SetDynamicDescriptor(kSRVs, 8, Src.GetSRV());
+        Context.SetDynamicDescriptor(kUAVs, 0, Dst.GetUAV());
+        Context.Dispatch3D(kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 4, 4, 4);
+
+    }
+
+    //Project
+    Context.TransitionResource(s_SimulationPressure[0], kShaderResourceState);
+    Context.TransitionResource(Velocity, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+    Context.SetPipelineState(s_CloudSimulationProjectPSO);
+    Context.SetDynamicDescriptor(kSRVs, 8, s_SimulationPressure[0].GetSRV());
+    Context.SetDynamicDescriptor(kUAVs, 0, Velocity.GetUAV());
+    Context.Dispatch3D(kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 4, 4, 4);
+
+
 
     //Advection
     Context.TransitionResource(Velocity, kShaderResourceState);

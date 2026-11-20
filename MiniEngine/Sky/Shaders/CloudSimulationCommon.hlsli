@@ -14,3 +14,8 @@ cbuffer SimulationConstants : register(b6)
 
 static const uint kSimulationWindowSize = 64;
 SamplerState LinearClampSampler : register(s0);
+
+bool IsInsideWIndow(int3 Cell)
+{
+    return all(Cell >= 0) && all(Cell < (kSimulationWindowSize));
+}

@@ -74,6 +74,15 @@
     <FxCompile Include="Shaders\CloudSimulationAdvectionCS.hlsl">
       <ShaderType>Compute</ShaderType>
     </FxCompile>
+    <FxCompile Include="Shaders\CloudSimulationDivergenceCS.hlsl">
+      <ShaderType>Compute</ShaderType>
+    </FxCompile>
+    <FxCompile Include="Shaders\CloudSimulationJacobiCS.hlsl">
+      <ShaderType>Compute</ShaderType>
+    </FxCompile>
+    <FxCompile Include="Shaders\CloudSimulationProjectCS.hlsl">
+      <ShaderType>Compute</ShaderType>
+    </FxCompile>
     <FxCompile Include="Shaders\CloudSimulationVelocityCS.hlsl">
       <ShaderType>Compute</ShaderType>
     </FxCompile>
