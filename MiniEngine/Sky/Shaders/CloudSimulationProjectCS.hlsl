@@ -5,13 +5,13 @@ RWTexture3D<float4> Velocity : register(u0);
 
 float LoadPressure(int3 Cell)
 {
-    return IsInsideWIndow(Cell) ? Pressure[Cell] : 0.0;
+    return IsInsideWindow(Cell) ? Pressure[Cell] : 0.0;
 }
 
 [numthreads(4, 4, 4)]
 void main( uint3 DTid : SV_DispatchThreadID )
 {
-    if(any(DTid == 0) || any(DTid==kSimulationWindowSize))
+    if(any(DTid == 0) || any(DTid==kSimulationWindowSize-1))
         return;
     
     int3 Cell = int3(DTid);

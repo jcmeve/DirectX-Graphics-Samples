@@ -12,5 +12,7 @@ void main( uint3 DTid : SV_DispatchThreadID )
     
     float3 Pos = WindowOrigin + DTid + 0.5;
     float3 Back = Pos - Velocity[DTid].xyz * DeltaTime;
-    SimulationDensity[DTid] = CloudVolume.SampleLevel(LinearClampSampler, Back / VoxelCount, 0);
+    float4 Density = CloudVolume.SampleLevel(LinearClampSampler, Back / VoxelCount, 0);
+    Density.r *= exp(-GetExpansionSource(Pos) * DeltaTime);
+    SimulationDensity[DTid] = Density;
 }

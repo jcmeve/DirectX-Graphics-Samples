@@ -6,7 +6,7 @@ RWTexture3D<float> Pressure : register(u1);
 
 float3 LoadVelocity(int3 Cell)
 {
-    return IsInsideWIndow(Cell) ? Velocity[Cell.xyz] : 0.0;
+    return (IsInsideWindow(Cell) ? Velocity[Cell.xyz].xyz : 0.0);
 }
 
 [numthreads(4, 4, 4)]
@@ -19,9 +19,7 @@ void main( uint3 DTid : SV_DispatchThreadID )
     + LoadVelocity(Cell + int3(0, 0, 1)).z - LoadVelocity(Cell - int3(0, 0, 1)).z
     );
     
-    float Distance = length(float3(WindowOrigin + DTid) + 0.5 - EventCenter);
-    float Falloff = saturate(1.0 - Distance / EventRadius);
-    Div -= EventStrength * Falloff * Falloff;
+    Div -= GetExpansionSource(float3(WindowOrigin + DTid) + 0.5);
     
     Divergence[DTid] = Div;
     

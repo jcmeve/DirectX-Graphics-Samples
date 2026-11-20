@@ -15,7 +15,13 @@ cbuffer SimulationConstants : register(b6)
 static const uint kSimulationWindowSize = 64;
 SamplerState LinearClampSampler : register(s0);
 
-bool IsInsideWIndow(int3 Cell)
+bool IsInsideWindow(int3 Cell)
 {
     return all(Cell >= 0) && all(Cell < (kSimulationWindowSize));
+}
+
+float GetExpansionSource(float3 VoxelPos)
+{
+    float Falloff = saturate(1.0 - length(VoxelPos - EventCenter) / EventRadius);
+    return EventStrength * Falloff * Falloff;
 }
