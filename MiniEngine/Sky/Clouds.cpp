@@ -209,6 +209,9 @@ namespace
     };
 
     static const uint32_t kSimulationWindowSize = 64;
+    static const uint32_t kSimulationCellVoxels = 2;
+    static const uint32_t kSimulationWindowVoxels = kSimulationWindowSize*kSimulationCellVoxels;
+
     ComputePSO s_CloudSimulationVelocityPSO(L"Clouds: Simulation Velocity CS");
     ComputePSO s_CloudSimulationAdvectionPSO(L"Clouds: Simulation Advection CS");
     ComputePSO s_CloudSimulationWriteBackPSO(L"Clouds: Simulation WriteBack CS");
@@ -229,7 +232,7 @@ namespace
     NumVar s_SimulationEventDuration("Graphics/Clouds/Simulation/Duration ", 8.0f, 1.0f, 30.0f, 1.0f);
 
     NumVar s_SimulationEventHeat("Graphics/Clouds/Simulation/Heat ", 1.0f, 0.0f, 10.0f, 0.1f);
-    NumVar s_SimulationEventBuoyancy("Graphics/Clouds/Simulation/Buoyancy ", 5.0f, 0.0f, 50.0f, 0.5f);
+    NumVar s_SimulationEventBuoyancy("Graphics/Clouds/Simulation/Buoyancy (m per s2)", 40.0f, 0.0f, 400.0f, 4.0f);
     NumVar s_SimulationEventCooling("Graphics/Clouds/Simulation/Cooling ", 0.2f, 0.0f, 5.0f, 0.05f);
 
 
@@ -529,7 +532,7 @@ void Clouds::Initialize(void)
 
     s_SimulationVelocity[0].Create(L"Cloud Simulation Velocity 0", kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
     s_SimulationVelocity[1].Create(L"Cloud Simulation Velocity 1", kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
-    s_SimulationDensity.Create(L"Cloud Simulation Density", kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 1, ModelingDesc.Format);
+    s_SimulationDensity.Create(L"Cloud Simulation Density", kSimulationWindowVoxels, kSimulationWindowVoxels, kSimulationWindowVoxels, 1, ModelingDesc.Format);
     s_SimulationPressure[0].Create(L"Cloud Simulation Pressure 0", kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 1, DXGI_FORMAT_R32_FLOAT);
     s_SimulationPressure[1].Create(L"Cloud Simulation Pressure 1", kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 1, DXGI_FORMAT_R32_FLOAT);
     s_SimulationDivergence.Create(L"Cloud Simulation Divergence", kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 1, DXGI_FORMAT_R32_FLOAT);
@@ -795,8 +798,8 @@ void Clouds::UpdateSimulation(ComputeContext& Context)
         for(int i = 0; i < 3; ++i)
         {
             s_SimulationEventCenter[i] = EventNorm[i] * s_VoxelCount[i];
-            const int Origin = (int)s_SimulationEventCenter[i] - (int)kSimulationWindowSize / 2;
-            s_SimulationWindowOrigin[i] = (uint32_t)(max(0, min(Origin, (int)(s_VoxelCount[i] - kSimulationWindowSize))));
+            const int Origin = ((int)s_SimulationEventCenter[i] - (int)kSimulationWindowVoxels / 2) & ~(int)(kSimulationCellVoxels - 1);
+            s_SimulationWindowOrigin[i] = (uint32_t)(max(0, min(Origin, (int)(s_VoxelCount[i] - kSimulationWindowVoxels))));
         }
         s_SimulationTimeLeft = s_SimulationEventDuration;
 
@@ -821,7 +824,7 @@ void Clouds::UpdateSimulation(ComputeContext& Context)
     Constants.bEventActive = bEventActive ? 1 : 0;
     Constants.bResetVelocity = bEventActive ? 1 : 0;
     Constants.EventHeat = s_SimulationEventHeat;
-    Constants.Buoyancy = s_SimulationEventBuoyancy;
+    Constants.Buoyancy = s_SimulationEventBuoyancy/(s_VoxelMeters*kSimulationCellVoxels);
     Constants.Cooling = s_SimulationEventCooling;
 
     for (int i = 0; i < 3; ++i) {
@@ -896,7 +899,7 @@ void Clouds::UpdateSimulation(ComputeContext& Context)
         Context.SetDynamicDescriptor(kSRVs, 5, s_CloudVolume.GetSRV());
         Context.SetDynamicDescriptor(kSRVs, 6, Velocity.GetSRV());
         Context.SetDynamicDescriptor(kUAVs, 0, s_SimulationDensity.GetUAV());
-        Context.Dispatch3D(kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 4, 4, 4);
+        Context.Dispatch3D(kSimulationWindowVoxels, kSimulationWindowVoxels, kSimulationWindowVoxels, 4, 4, 4);
     }
 
     {
@@ -907,14 +910,14 @@ void Clouds::UpdateSimulation(ComputeContext& Context)
         Context.SetPipelineState(s_CloudSimulationWriteBackPSO);
         Context.SetDynamicDescriptor(kSRVs, 6, s_SimulationDensity.GetSRV());
         Context.SetDynamicDescriptor(kUAVs, 0, s_CloudVolume.GetUAV());
-        Context.Dispatch3D(kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 4, 4, 4);
+        Context.Dispatch3D(kSimulationWindowVoxels, kSimulationWindowVoxels, kSimulationWindowVoxels, 4, 4, 4);
     }
     Context.TransitionResource(s_CloudVolume, kShaderResourceState);
 
     const uint32_t WindowMax[3] = {
-        s_SimulationWindowOrigin[0] + kSimulationWindowSize,
-        s_SimulationWindowOrigin[1] + kSimulationWindowSize ,
-        s_SimulationWindowOrigin[2] + kSimulationWindowSize };
+        s_SimulationWindowOrigin[0] + kSimulationWindowVoxels,
+        s_SimulationWindowOrigin[1] + kSimulationWindowVoxels,
+        s_SimulationWindowOrigin[2] + kSimulationWindowVoxels };
 
     SetVolumeDirty(s_SimulationWindowOrigin, WindowMax);
 

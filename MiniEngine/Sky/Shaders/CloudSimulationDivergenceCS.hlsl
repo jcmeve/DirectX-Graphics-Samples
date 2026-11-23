@@ -19,7 +19,7 @@ void main( uint3 DTid : SV_DispatchThreadID )
     + LoadVelocity(Cell + int3(0, 0, 1)).z - LoadVelocity(Cell - int3(0, 0, 1)).z
     );
     
-    Div -= GetExpansionSource(float3(WindowOrigin + DTid) + 0.5);
+    Div -= GetExpansionSource(CellToVoxel(float3(DTid) + 0.5));
     
     Divergence[DTid] = Div;
     

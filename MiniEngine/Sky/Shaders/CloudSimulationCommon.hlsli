@@ -18,19 +18,37 @@ cbuffer SimulationConstants : register(b6)
 }
 
 static const uint kSimulationWindowSize = 64;
+static const uint kSimulationCellVoxels = 2; //½Ã¹Ä1¼¿ = 2º¹¼¿
+static const uint kSimulationWindowVoxels = kSimulationWindowSize * kSimulationCellVoxels;
+static const float kSpongeCells = 4.0;
+static const float kSpongeRate = 8.0;
+
 SamplerState LinearClampSampler : register(s0);
 
 bool IsInsideWindow(int3 Cell)
 {
-    return all(Cell >= 0) && all(Cell < (kSimulationWindowSize));
+    return all(Cell >= 0) && all(Cell < int(kSimulationWindowSize));
 }
+
+float3 CellToVoxel(float3 CellPos)
+{
+    return float3(WindowOrigin) + CellPos * kSimulationCellVoxels;
+}
+
+float3 TraceBack(Texture3D<float4> Velocity, float3 CellPos, float3 StartVelocity)
+{
+    float3 Mid = CellPos - 0.5 * DeltaTime * StartVelocity;
+    float3 MidVelocity = Velocity.SampleLevel(LinearClampSampler, Mid / kSimulationWindowSize, 0).xyz;
+    return CellPos - DeltaTime * MidVelocity;
+}
+
 float GetEventFalloff(float3 VoxelPos)
 {
     float Falloff = saturate(1.0 - length(VoxelPos - EventCenter) / EventRadius);
     return Falloff * Falloff;
 }
+
 float GetExpansionSource(float3 VoxelPos)
 {
-    float Falloff = saturate(1.0 - length(VoxelPos - EventCenter) / EventRadius);
     return EventStrength * GetEventFalloff(VoxelPos);
 }

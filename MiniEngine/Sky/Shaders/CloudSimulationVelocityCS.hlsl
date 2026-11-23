@@ -18,7 +18,8 @@ void main( uint3 DTid : SV_DispatchThreadID )
     
     if (!bResetVelocity)
     {
-        float3 Back = Pos - PrevVelocity[DTid].xyz * DeltaTime;
+        
+        float3 Back = TraceBack(PrevVelocity, Pos, PrevVelocity[DTid].xyz);
         float4 Prev = PrevVelocity.SampleLevel(LinearClampSampler, Back / kSimulationWindowSize, 0);
         
         //이전 지점에서 샘플링
@@ -27,9 +28,13 @@ void main( uint3 DTid : SV_DispatchThreadID )
     }
     
     if (EventStrength > 0.0)
-        Temperature = max(Temperature, EventHeat * GetEventFalloff(WindowOrigin + Pos));
-    
+        Temperature = max(Temperature, EventHeat * GetEventFalloff(CellToVoxel(Pos)));
     V.z += Buoyancy * Temperature * DeltaTime;
+    
+    float EdgeDistance = min(min(min(min(min(Pos.x, Pos.y), Pos.z), kSimulationWindowSize - Pos.x), kSimulationWindowSize - Pos.y), kSimulationWindowSize - Pos.z);
+    float Sponge = 1.0 - saturate(EdgeDistance / kSpongeCells);
+    
+    V *= exp(-kSpongeRate * Sponge * DeltaTime);
     
     Velocity[DTid] = float4(V, Temperature);
 }

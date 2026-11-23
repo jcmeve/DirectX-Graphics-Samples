@@ -10,9 +10,11 @@ void main( uint3 DTid : SV_DispatchThreadID )
     uint3 VoxelCount;
     CloudVolume.GetDimensions(VoxelCount.x, VoxelCount.y, VoxelCount.z);
     
-    float3 Pos = WindowOrigin + DTid + 0.5;
-    float3 Back = Pos - Velocity[DTid].xyz * DeltaTime;
+    float3 CellPos = (DTid + 0.5) / kSimulationCellVoxels;
+    float3 StartVelocity = Velocity.SampleLevel(LinearClampSampler, CellPos / kSimulationWindowSize, 0).xyz;
+    float3 Back = CellToVoxel(TraceBack(Velocity, CellPos, StartVelocity));
+    
     float4 Density = CloudVolume.SampleLevel(LinearClampSampler, Back / VoxelCount, 0);
-    Density.r *= exp(-GetExpansionSource(Pos) * DeltaTime);
+    Density.b *= exp(-GetExpansionSource(CellToVoxel(CellPos)) * DeltaTime);
     SimulationDensity[DTid] = Density;
 }
