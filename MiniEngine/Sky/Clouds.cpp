@@ -222,13 +222,13 @@ namespace
     BoolVar s_SimulationTrigger("Graphics/Clouds/Simulation/Trigger Explosion", false);
     NumVar s_SimulationEventX("Graphics/Clouds/Simulation/EventX ", 0.5f, 0.0f, 1.0f, 0.01f);
     NumVar s_SimulationEventZ("Graphics/Clouds/Simulation/EventZ ", 0.5f, 0.0f, 1.0f, 0.01f);
-    NumVar s_SimulationEventY("Graphics/Clouds/Simulation/EventY ", 0.5f, 0.0f, 1.0f, 0.01f);
+    NumVar s_SimulationEventY("Graphics/Clouds/Simulation/EventY ", 0.13f, 0.0f, 1.0f, 0.01f);
     NumVar s_SimulationEventRadius("Graphics/Clouds/Simulation/Radius (m) ", 120.0f, 15.0f, 1024.0f, 8.0f);
 
     NumVar s_SimulationEventStrength("Graphics/Clouds/Simulation/Expansion Rate (1 per s) ", 5.0f, 0.0f, 500.0, 0.5f);
     NumVar s_SimulationExpansionTime("Graphics/Clouds/Simulation/Expansion Time (s) ", 0.3f, 0.05f, 3.0f, 0.05f);
     IntVar s_SimulationJacobiIterations("Graphics/Clouds/Simulation/Jacobi Iteractions", 30, 2, 80, 2);
-    NumVar s_SimulationEventDrag("Graphics/Clouds/Simulation/Drag ", 1.0f, 0.0f, 10.0f, 0.1f);
+    NumVar s_SimulationEventDrag("Graphics/Clouds/Simulation/Drag ", 0.2f, 0.0f, 10.0f, 0.1f);
     NumVar s_SimulationEventDuration("Graphics/Clouds/Simulation/Duration ", 8.0f, 1.0f, 30.0f, 1.0f);
 
     NumVar s_SimulationEventHeat("Graphics/Clouds/Simulation/Heat ", 1.0f, 0.0f, 10.0f, 0.1f);
@@ -239,13 +239,18 @@ namespace
     VolumeBuffer s_SimulationDivergence;
     VolumeBuffer s_SimulationVelocity[2];
     VolumeBuffer s_SimulationPressure[2];
-    VolumeBuffer s_SimulationDensity;
+
+    VolumeBuffer s_CloudDisplacement;
+    VolumeBuffer s_SimulationDisplacement;
 
     uint32_t s_VoxelCount[3];
     float s_VoxelMeters;
     uint32_t s_SimulationWindowOrigin[3];
     float s_SimulationEventCenter[3];
     float s_SimulationTimeLeft = 0.0f;
+
+
+
 #pragma endregion
 
     enum DebugVolume
@@ -368,7 +373,7 @@ void Clouds::Initialize(void)
     s_RootSig[kViewCBV].InitAsConstantBuffer(2);
     s_RootSig[kCloudCBV].InitAsConstantBuffer(3);
     s_RootSig[kCloudShadowCBV].InitAsConstantBuffer(4);
-    s_RootSig[kSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 15);
+    s_RootSig[kSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 16);
     s_RootSig[kUAVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 0, 6);
     s_RootSig[kOccupancyConstants].InitAsConstants(5, 4);
     s_RootSig[kSimulationCBV].InitAsConstantBuffer(6);
@@ -450,9 +455,11 @@ void Clouds::Initialize(void)
     const D3D12_RESOURCE_DESC ModelingDesc = ModelingSource.GetResource()->GetDesc();
     const uint32_t VoxelCount[3] = { (uint32_t)ModelingDesc.Width, (uint32_t)ModelingDesc.Height, (uint32_t)ModelingDesc.DepthOrArraySize * kVolumeHeightScale };
     s_CloudVolume.Create(L"Cloud Volume", VoxelCount[0], VoxelCount[1], VoxelCount[2], 1, ModelingDesc.Format);
+    s_CloudDisplacement.Create(L"Cloud Displacement", VoxelCount[0]/kSimulationCellVoxels, VoxelCount[1] / kSimulationCellVoxels, VoxelCount[2] / kSimulationCellVoxels, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
 
     GraphicsContext& InitContext = GraphicsContext::Begin(L"Cloud Volume Init");
     InitContext.TransitionResource(s_CloudVolume, D3D12_RESOURCE_STATE_COPY_DEST);
+    InitContext.TransitionResource(s_CloudDisplacement, kShaderResourceState);
     InitContext.TransitionResource(ModelingSource, D3D12_RESOURCE_STATE_COPY_SOURCE, true);
 
     D3D12_TEXTURE_COPY_LOCATION Dest = {};
@@ -468,7 +475,6 @@ void Clouds::Initialize(void)
     const D3D12_BOX SourceBox = { 0,0,0,(UINT)ModelingDesc.Width, (UINT)ModelingDesc.Height, (UINT)ModelingDesc.DepthOrArraySize };
     InitContext.GetCommandList()->CopyTextureRegion(&Dest, 0, 0, 0, &Source, &SourceBox);
 
-    InitContext.TransitionResource(s_CloudVolume, kShaderResourceState);
     InitContext.Finish(true);
 
     s_CloudVelocity.Create(L"Cloud Velocity", Graphics::g_SceneColorBuffer.GetWidth(), ::g_SceneColorBuffer.GetHeight(), 1, DXGI_FORMAT_R32_UINT);
@@ -532,7 +538,7 @@ void Clouds::Initialize(void)
 
     s_SimulationVelocity[0].Create(L"Cloud Simulation Velocity 0", kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
     s_SimulationVelocity[1].Create(L"Cloud Simulation Velocity 1", kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
-    s_SimulationDensity.Create(L"Cloud Simulation Density", kSimulationWindowVoxels, kSimulationWindowVoxels, kSimulationWindowVoxels, 1, ModelingDesc.Format);
+    s_SimulationDisplacement.Create(L"Cloud Simulation Displacement", kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
     s_SimulationPressure[0].Create(L"Cloud Simulation Pressure 0", kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 1, DXGI_FORMAT_R32_FLOAT);
     s_SimulationPressure[1].Create(L"Cloud Simulation Pressure 1", kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 1, DXGI_FORMAT_R32_FLOAT);
     s_SimulationDivergence.Create(L"Cloud Simulation Divergence", kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 1, DXGI_FORMAT_R32_FLOAT);
@@ -567,7 +573,8 @@ void Clouds::Shutdown(void)
 
     s_SimulationVelocity[0].Destroy();
     s_SimulationVelocity[1].Destroy();
-    s_SimulationDensity.Destroy();
+    s_CloudDisplacement.Destroy();
+    s_SimulationDisplacement.Destroy();
     s_SimulationPressure[0].Destroy();
     s_SimulationPressure[1].Destroy();
     s_SimulationDivergence.Destroy();
@@ -615,6 +622,7 @@ void Clouds::Render(GraphicsContext& Context, const Math::Camera& Camera, const 
         Context.SetDynamicConstantBufferView(kCloudCBV, sizeof(Constants), &Constants);
         Context.SetDynamicDescriptor(kSRVs, 4, s_NoiseTexture.GetSRV());
         Context.SetDynamicDescriptor(kSRVs, 5, s_CloudVolume.GetSRV());
+        Context.SetDynamicDescriptor(kSRVs, 15, s_CloudDisplacement.GetSRV());
         Context.SetDynamicDescriptor(kSRVs, 12, s_BrickOccupancy.GetSRV());
 
 #ifdef BRICK_DISTANCE_FIELD
@@ -675,6 +683,7 @@ void Clouds::Render(GraphicsContext& Context, const Math::Camera& Camera, const 
         Context.SetDynamicDescriptor(kSRVs, 3, g_SceneDepthBuffer.GetDepthSRV());
         Context.SetDynamicDescriptor(kSRVs, 4, s_NoiseTexture.GetSRV());
         Context.SetDynamicDescriptor(kSRVs, 5, s_CloudVolume.GetSRV());
+        Context.SetDynamicDescriptor(kSRVs, 15, s_CloudDisplacement.GetSRV());
         Context.Draw(3);
     }
 }
@@ -724,7 +733,9 @@ void Clouds::UpdateOccupancy(ComputeContext& Context)
     Context.TransitionResource(s_SectorOccupancy, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
 #endif
 
+
     Context.SetDynamicDescriptor(kSRVs, 5, s_CloudVolume.GetSRV());
+    Context.SetDynamicDescriptor(kSRVs, 15, s_CloudDisplacement.GetSRV());
     Context.SetDynamicDescriptor(kUAVs, 0, s_BrickOccupancy.GetUAV());
 #ifdef BRICK_DISTANCE_FIELD
     Context.SetDynamicDescriptor(kUAVs, 1, s_BrickDistance.GetUAV());
@@ -891,28 +902,28 @@ void Clouds::UpdateSimulation(ComputeContext& Context)
     }
 
     {
-        ScopedTimer _prof4(L"Cloud Silumation Advection", Context);
+        ScopedTimer _prof4(L"Cloud Silumation Displacement", Context);
         //Advection
         Context.TransitionResource(Velocity, kShaderResourceState);
-        Context.TransitionResource(s_SimulationDensity, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+        Context.TransitionResource(s_SimulationDisplacement, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
         Context.SetPipelineState(s_CloudSimulationAdvectionPSO);
-        Context.SetDynamicDescriptor(kSRVs, 5, s_CloudVolume.GetSRV());
         Context.SetDynamicDescriptor(kSRVs, 6, Velocity.GetSRV());
-        Context.SetDynamicDescriptor(kUAVs, 0, s_SimulationDensity.GetUAV());
-        Context.Dispatch3D(kSimulationWindowVoxels, kSimulationWindowVoxels, kSimulationWindowVoxels, 4, 4, 4);
+        Context.SetDynamicDescriptor(kSRVs, 15, s_CloudDisplacement.GetSRV());
+        Context.SetDynamicDescriptor(kUAVs, 0, s_SimulationDisplacement.GetUAV());
+        Context.Dispatch3D(kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 4, 4, 4);
     }
 
     {
         ScopedTimer _prof5(L"Cloud Silumation WriteBack", Context);
         //WriteBack
-        Context.TransitionResource(s_SimulationDensity, kShaderResourceState);
-        Context.TransitionResource(s_CloudVolume, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+        Context.TransitionResource(s_SimulationDisplacement, kShaderResourceState);
+        Context.TransitionResource(s_CloudDisplacement, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
         Context.SetPipelineState(s_CloudSimulationWriteBackPSO);
-        Context.SetDynamicDescriptor(kSRVs, 6, s_SimulationDensity.GetSRV());
-        Context.SetDynamicDescriptor(kUAVs, 0, s_CloudVolume.GetUAV());
-        Context.Dispatch3D(kSimulationWindowVoxels, kSimulationWindowVoxels, kSimulationWindowVoxels, 4, 4, 4);
+        Context.SetDynamicDescriptor(kSRVs, 6, s_SimulationDisplacement.GetSRV());
+        Context.SetDynamicDescriptor(kUAVs, 0, s_CloudDisplacement.GetUAV());
+        Context.Dispatch3D(kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 4, 4, 4);
     }
-    Context.TransitionResource(s_CloudVolume, kShaderResourceState);
+    Context.TransitionResource(s_CloudDisplacement, kShaderResourceState);
 
     const uint32_t WindowMax[3] = {
         s_SimulationWindowOrigin[0] + kSimulationWindowVoxels,
@@ -972,6 +983,7 @@ void Clouds::RenderShadowMapAndLightCache(ComputeContext& Context, const Math::C
             Context.SetDynamicConstantBufferView(kCloudShadowCBV, sizeof(s_ShadowConstants), &s_ShadowConstants);
             Context.SetDynamicDescriptor(kSRVs, 4, s_NoiseTexture.GetSRV());
             Context.SetDynamicDescriptor(kSRVs, 5, s_CloudVolume.GetSRV());
+            Context.SetDynamicDescriptor(kSRVs, 15, s_CloudDisplacement.GetSRV());
             Context.SetDynamicDescriptor(kSRVs, 12, s_BrickOccupancy.GetSRV());
 #ifdef BRICK_DISTANCE_FIELD   
             Context.SetDynamicDescriptor(kSRVs, 13, s_BrickDistance.GetSRV());
@@ -1013,6 +1025,7 @@ void Clouds::RenderShadowMapAndLightCache(ComputeContext& Context, const Math::C
             Context.SetConstants(kOccupancyConstants, Stride, Phase);
 
             Context.SetDynamicDescriptor(kSRVs, 5, s_CloudVolume.GetSRV());
+            Context.SetDynamicDescriptor(kSRVs, 15, s_CloudDisplacement.GetSRV());
             Context.SetDynamicDescriptor(kSRVs, 12, s_BrickOccupancy.GetSRV());
 #ifdef BRICK_DISTANCE_FIELD   
             Context.SetDynamicDescriptor(kSRVs, 13, s_BrickDistance.GetSRV());

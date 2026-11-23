@@ -36,7 +36,7 @@ void main(uint3 GroupID : SV_GroupID, uint GroupIndex : SV_GroupIndex)
         Voxel.xy = (Voxel.xy + VoxelCount.xy) % VoxelCount.xy;
         Voxel.z = clamp(Voxel.z, 0, VoxelCount.z - 1);
 
-        float3 Modeling = CloudModeling[Voxel].rgb;
+        float3 Modeling = SampleDisplacedModeling((float3(Voxel) + 0.5) / float3(VoxelCount)).Modeling;
         MaxDensity = max(MaxDensity, Modeling.r * Modeling.b);
     }
 
