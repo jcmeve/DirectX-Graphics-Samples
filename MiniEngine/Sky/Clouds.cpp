@@ -136,6 +136,16 @@ namespace
     NumVar s_GlobalWindDirection("Graphics/Clouds/Wind/Direction (deg)", 90.0f, 0.0f, 360.0f, 5.0f);
     float s_GlobalWindOffset[3] = {};
     float s_GlobalWindDeltaMeters[3] = {};
+
+    IntVar s_LightCacheFrames("Graphics/Clouds/Light Cache Frames", 8, 1, 32, 1);
+    const float kLightCacheSunEpsilon = 1e-5;
+
+    bool s_bLightCacheFull = true;
+    bool s_bLightCacheDirty = false;
+    uint32_t s_LightCacheFramesLeft = 0;
+    uint32_t s_LightCachePhase = 0;
+    float s_LightCacheSunDirection[3] = {};
+
 #pragma endregion
 
 #pragma region BRICK_OCCUPANCY
@@ -934,6 +944,7 @@ void Clouds::SetVolumeDirty(const uint32_t VoxelMin[3], const uint32_t VoxelMax[
         s_DirtyVoxelMax[i] = s_bOccupancyDirty ? max(s_DirtyVoxelMax[i],VoxelMax[i]) : VoxelMax[i];
     }
     s_bOccupancyDirty = true;
+    s_bLightCacheDirty = true;
 }
 
 void Clouds::RenderShadowMapAndLightCache(ComputeContext& Context, const Math::Camera& Camera, const Math::Vector3& SunDirection)
@@ -972,25 +983,57 @@ void Clouds::RenderShadowMapAndLightCache(ComputeContext& Context, const Math::C
     if (s_EnableClouds && s_bTexturesValid)
     {
         ScopedTimer _prof2(L"Cloud Light Cache", Context);
+        const float SunDot =
+            s_ShadowConstants.SunDirection[0] * s_LightCacheSunDirection[0] 
+            + s_ShadowConstants.SunDirection[1] * s_LightCacheSunDirection[1] 
+            + s_ShadowConstants.SunDirection[2] * s_LightCacheSunDirection[2];
+        if (1.0f-SunDot > kLightCacheSunEpsilon || s_bLightCacheDirty) {
+            for (int i = 0; i < 3; ++i) {
+                s_LightCacheSunDirection[i] = s_ShadowConstants.SunDirection[i];
+            }
+            s_LightCacheFramesLeft = s_LightCacheFrames;
+            s_bLightCacheDirty = false;
+        }
 
-        Context.TransitionResource(s_LightCacheVolume, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
-        
-        Context.SetRootSignature(s_RootSig);
-        Context.SetPipelineState(s_LightCacheVolumePSO);
+        if (s_bLightCacheFull || s_LightCacheFramesLeft > 0) {
 
-        Context.SetDynamicConstantBufferView(kCloudCBV, sizeof(s_CloudConstants), &s_CloudConstants);
-        Context.SetDynamicConstantBufferView(kCloudShadowCBV, sizeof(s_ShadowConstants), &s_ShadowConstants);
-        Context.SetDynamicDescriptor(kSRVs, 5, s_CloudVolume.GetSRV());
-        Context.SetDynamicDescriptor(kSRVs, 12, s_BrickOccupancy.GetSRV());
+            const uint32_t Stride = s_bLightCacheFull ? 1 : s_LightCacheFrames;
+            const uint32_t Phase = s_bLightCacheFull ? 0 : s_LightCachePhase % s_LightCacheFrames;
+
+            Context.TransitionResource(s_LightCacheVolume, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+
+            Context.SetRootSignature(s_RootSig);
+            Context.SetPipelineState(s_LightCacheVolumePSO);
+
+            Context.SetDynamicConstantBufferView(kCloudCBV, sizeof(s_CloudConstants), &s_CloudConstants);
+            Context.SetDynamicConstantBufferView(kCloudShadowCBV, sizeof(s_ShadowConstants), &s_ShadowConstants);
+            Context.SetConstants(kOccupancyConstants, Stride, Phase);
+
+            Context.SetDynamicDescriptor(kSRVs, 5, s_CloudVolume.GetSRV());
+            Context.SetDynamicDescriptor(kSRVs, 12, s_BrickOccupancy.GetSRV());
 #ifdef BRICK_DISTANCE_FIELD   
-        Context.SetDynamicDescriptor(kSRVs, 13, s_BrickDistance.GetSRV());
+            Context.SetDynamicDescriptor(kSRVs, 13, s_BrickDistance.GetSRV());
 #else
-        Context.SetDynamicDescriptor(kSRVs, 13, s_SectorOccupancy.GetSRV());
+            Context.SetDynamicDescriptor(kSRVs, 13, s_SectorOccupancy.GetSRV());
 #endif
-        Context.SetDynamicDescriptor(kUAVs, 0, s_LightCacheVolume.GetUAV());
-        Context.Dispatch3D(s_VoxelCount[0] / kLightCacheRatio, s_VoxelCount[1] / kLightCacheRatio, s_VoxelCount[2] / kLightCacheRatio, 4, 4, 4);
+            Context.SetDynamicDescriptor(kUAVs, 0, s_LightCacheVolume.GetUAV());
+            Context.Dispatch3D(s_VoxelCount[0] / kLightCacheRatio, s_VoxelCount[1] / kLightCacheRatio, (s_VoxelCount[2] / kLightCacheRatio + Stride - 1) / Stride, 4, 4, 4);
 
-        Context.TransitionResource(s_LightCacheVolume, kShaderResourceState);
+            Context.TransitionResource(s_LightCacheVolume, kShaderResourceState);
+
+            if (s_bLightCacheFull) 
+            {
+                s_bLightCacheFull = false;
+                s_LightCacheFramesLeft = 0;
+            }
+            else 
+            {
+                ++s_LightCachePhase;
+                --s_LightCacheFramesLeft;
+            }
+        }
+
+
     }
 }
 

@@ -51,7 +51,7 @@ float GetSunScattering(float LightDepth, float CosTheta)
 float SampleLightCache(float3 RelPos)
 {
     float3 Coord = (RelPos - BoundsMin) / BoundsSize;
-    if (Coord.y < 0.0 || Coord.y > 1.0)
+    if (!IsInsideBounds(Coord))
         return 0.0;
     uint3 CacheSize;
     CloudLightCache.GetDimensions(CacheSize.x, CacheSize.y, CacheSize.z);
