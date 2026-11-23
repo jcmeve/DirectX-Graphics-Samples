@@ -51,9 +51,13 @@ float GetSunScattering(float LightDepth, float CosTheta)
 float SampleLightCache(float3 RelPos)
 {
     float3 Coord = (RelPos - BoundsMin) / BoundsSize;
-    if(!IsInsideBounds(Coord))
+    if (Coord.y < 0.0 || Coord.y > 1.0)
         return 0.0;
-    return CloudLightCache.SampleLevel(LinearClampSampler, Coord.xzy, 0);
+    uint3 CacheSize;
+    CloudLightCache.GetDimensions(CacheSize.x, CacheSize.y, CacheSize.z);
+    float3 UVW = ToVolumeUVW(Coord);
+    UVW.z = clamp(UVW.z, 0.5 / CacheSize.z, 1.0 - 0.5 / CacheSize.z);
+    return CloudLightCache.SampleLevel(LinearWrapSampler, UVW, 0);
 
 }
  

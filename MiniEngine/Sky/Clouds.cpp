@@ -96,7 +96,8 @@ namespace
 
     const float kWorldUnitsToMeters = 0.01f; //cm to m
     const float kCloudScale = 1.0f;
-    const float kCloudBoundsSize[3] = { 4096.0f * kCloudScale, 512.0f * kCloudScale, 4096.0f * kCloudScale };
+    const uint32_t kVolumeHeightScale = 4;
+    const float kCloudBoundsSize[3] = { 4096.0f * kCloudScale, 512.0f * kVolumeHeightScale * kCloudScale, 4096.0f * kCloudScale };
 
     const uint32_t kShadowMapSize = 1024;
     const D3D12_RESOURCE_STATES kShaderResourceState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
@@ -434,11 +435,26 @@ void Clouds::Initialize(void)
 
     Texture& ModelingSource = const_cast<Texture&> (*ModelingTexture.Get());
     const D3D12_RESOURCE_DESC ModelingDesc = ModelingSource.GetResource()->GetDesc();
-    const uint32_t VoxelCount[3] = { (uint32_t)ModelingDesc.Width, (uint32_t)ModelingDesc.Height, (uint32_t)ModelingDesc.DepthOrArraySize };
-    s_CloudVolume.Create(L"Cloud Volume", VoxelCount[0], VoxelCount[1], VoxelCount[2], ModelingDesc.MipLevels, ModelingDesc.Format);
+    const uint32_t VoxelCount[3] = { (uint32_t)ModelingDesc.Width, (uint32_t)ModelingDesc.Height, (uint32_t)ModelingDesc.DepthOrArraySize * kVolumeHeightScale };
+    s_CloudVolume.Create(L"Cloud Volume", VoxelCount[0], VoxelCount[1], VoxelCount[2], 1, ModelingDesc.Format);
 
     GraphicsContext& InitContext = GraphicsContext::Begin(L"Cloud Volume Init");
-    InitContext.CopyBuffer(s_CloudVolume, ModelingSource);
+    InitContext.TransitionResource(s_CloudVolume, D3D12_RESOURCE_STATE_COPY_DEST);
+    InitContext.TransitionResource(ModelingSource, D3D12_RESOURCE_STATE_COPY_SOURCE, true);
+
+    D3D12_TEXTURE_COPY_LOCATION Dest = {};
+    Dest.pResource = s_CloudVolume.GetResource();
+    Dest.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    Dest.SubresourceIndex = 0;
+
+    D3D12_TEXTURE_COPY_LOCATION Source = {};
+    Source.pResource = ModelingSource.GetResource();
+    Source.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    Source.SubresourceIndex = 0;
+
+    const D3D12_BOX SourceBox = { 0,0,0,(UINT)ModelingDesc.Width, (UINT)ModelingDesc.Height, (UINT)ModelingDesc.DepthOrArraySize };
+    InitContext.GetCommandList()->CopyTextureRegion(&Dest, 0, 0, 0, &Source, &SourceBox);
+
     InitContext.TransitionResource(s_CloudVolume, kShaderResourceState);
     InitContext.Finish(true);
 
@@ -808,69 +824,81 @@ void Clouds::UpdateSimulation(ComputeContext& Context)
 
     Context.SetRootSignature(s_RootSig);
     Context.SetDynamicConstantBufferView(kSimulationCBV, sizeof(CloudSimulationConstants), &Constants);
+    {
+        ScopedTimer _prof1(L"Cloud Silumation Velocity", Context);
 
-    //Velocity
-    Context.TransitionResource(PrevVelocity, kShaderResourceState);
-    Context.TransitionResource(Velocity, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
-    Context.SetPipelineState(s_CloudSimulationVelocityPSO);
-    Context.SetDynamicDescriptor(kSRVs, 6, PrevVelocity.GetSRV());
-    Context.SetDynamicDescriptor(kUAVs, 0, Velocity.GetUAV());
-    Context.Dispatch3D(kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 4, 4, 4);
-
-    //Divergence
-    Context.TransitionResource(Velocity, kShaderResourceState);
-    Context.TransitionResource(s_SimulationDivergence, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
-    Context.TransitionResource(s_SimulationPressure[0], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
-    Context.SetPipelineState(s_CloudSimulationDivergencePSO);
-    Context.SetDynamicDescriptor(kSRVs, 6, Velocity.GetSRV());
-    Context.SetDynamicDescriptor(kUAVs, 0, s_SimulationDivergence.GetUAV());
-    Context.SetDynamicDescriptor(kUAVs, 1, s_SimulationPressure[0].GetUAV());
-    Context.Dispatch3D(kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 4, 4, 4);
-
-    //Jacobi
-    Context.TransitionResource(s_SimulationDivergence, kShaderResourceState);
-    Context.SetPipelineState(s_CloudSimulationJacobiPSO);
-    Context.SetDynamicDescriptor(kSRVs, 7, s_SimulationDivergence.GetSRV());
-
-    const int JacobiIterations = (s_SimulationJacobiIterations + 1) & ~1;
-    for (int i = 0; i < JacobiIterations; ++i) {
-        VolumeBuffer& Src = s_SimulationPressure[i % 2];
-        VolumeBuffer& Dst = s_SimulationPressure[(i + 1) % 2];
-        Context.TransitionResource(Src, kShaderResourceState);
-        Context.TransitionResource(Dst, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
-        Context.SetDynamicDescriptor(kSRVs, 8, Src.GetSRV());
-        Context.SetDynamicDescriptor(kUAVs, 0, Dst.GetUAV());
+        //Velocity
+        Context.TransitionResource(PrevVelocity, kShaderResourceState);
+        Context.TransitionResource(Velocity, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+        Context.SetPipelineState(s_CloudSimulationVelocityPSO);
+        Context.SetDynamicDescriptor(kSRVs, 6, PrevVelocity.GetSRV());
+        Context.SetDynamicDescriptor(kUAVs, 0, Velocity.GetUAV());
         Context.Dispatch3D(kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 4, 4, 4);
+    }
+    {
+        ScopedTimer _prof2(L"Cloud Silumation Divergence", Context);
+        //Divergence
+        Context.TransitionResource(Velocity, kShaderResourceState);
+        Context.TransitionResource(s_SimulationDivergence, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+        Context.TransitionResource(s_SimulationPressure[0], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+        Context.SetPipelineState(s_CloudSimulationDivergencePSO);
+        Context.SetDynamicDescriptor(kSRVs, 6, Velocity.GetSRV());
+        Context.SetDynamicDescriptor(kUAVs, 0, s_SimulationDivergence.GetUAV());
+        Context.SetDynamicDescriptor(kUAVs, 1, s_SimulationPressure[0].GetUAV());
+        Context.Dispatch3D(kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 4, 4, 4);
+    }
+    {
+        ScopedTimer _prof3(L"Cloud Silumation Jacobi", Context);
+        //Jacobi
+        Context.TransitionResource(s_SimulationDivergence, kShaderResourceState);
+        Context.SetPipelineState(s_CloudSimulationJacobiPSO);
+        Context.SetDynamicDescriptor(kSRVs, 7, s_SimulationDivergence.GetSRV());
 
+        const int JacobiIterations = (s_SimulationJacobiIterations + 1) & ~1;
+        for (int i = 0; i < JacobiIterations; ++i) {
+            VolumeBuffer& Src = s_SimulationPressure[i % 2];
+            VolumeBuffer& Dst = s_SimulationPressure[(i + 1) % 2];
+            Context.TransitionResource(Src, kShaderResourceState);
+            Context.TransitionResource(Dst, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+            Context.SetDynamicDescriptor(kSRVs, 8, Src.GetSRV());
+            Context.SetDynamicDescriptor(kUAVs, 0, Dst.GetUAV());
+            Context.Dispatch3D(kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 4, 4, 4);
+
+        }
+    }
+    {
+        ScopedTimer _prof4(L"Cloud Silumation Project", Context);
+        //Project
+        Context.TransitionResource(s_SimulationPressure[0], kShaderResourceState);
+        Context.TransitionResource(Velocity, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+        Context.SetPipelineState(s_CloudSimulationProjectPSO);
+        Context.SetDynamicDescriptor(kSRVs, 8, s_SimulationPressure[0].GetSRV());
+        Context.SetDynamicDescriptor(kUAVs, 0, Velocity.GetUAV());
+        Context.Dispatch3D(kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 4, 4, 4);
     }
 
-    //Project
-    Context.TransitionResource(s_SimulationPressure[0], kShaderResourceState);
-    Context.TransitionResource(Velocity, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
-    Context.SetPipelineState(s_CloudSimulationProjectPSO);
-    Context.SetDynamicDescriptor(kSRVs, 8, s_SimulationPressure[0].GetSRV());
-    Context.SetDynamicDescriptor(kUAVs, 0, Velocity.GetUAV());
-    Context.Dispatch3D(kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 4, 4, 4);
+    {
+        ScopedTimer _prof4(L"Cloud Silumation Advection", Context);
+        //Advection
+        Context.TransitionResource(Velocity, kShaderResourceState);
+        Context.TransitionResource(s_SimulationDensity, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+        Context.SetPipelineState(s_CloudSimulationAdvectionPSO);
+        Context.SetDynamicDescriptor(kSRVs, 5, s_CloudVolume.GetSRV());
+        Context.SetDynamicDescriptor(kSRVs, 6, Velocity.GetSRV());
+        Context.SetDynamicDescriptor(kUAVs, 0, s_SimulationDensity.GetUAV());
+        Context.Dispatch3D(kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 4, 4, 4);
+    }
 
-
-
-    //Advection
-    Context.TransitionResource(Velocity, kShaderResourceState);
-    Context.TransitionResource(s_SimulationDensity, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
-    Context.SetPipelineState(s_CloudSimulationAdvectionPSO);
-    Context.SetDynamicDescriptor(kSRVs, 5, s_CloudVolume.GetSRV());
-    Context.SetDynamicDescriptor(kSRVs, 6, Velocity.GetSRV());
-    Context.SetDynamicDescriptor(kUAVs, 0, s_SimulationDensity.GetUAV());
-    Context.Dispatch3D(kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 4, 4, 4);
-
-    //WriteBack
-    Context.TransitionResource(s_SimulationDensity, kShaderResourceState);
-    Context.TransitionResource(s_CloudVolume, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
-    Context.SetPipelineState(s_CloudSimulationWriteBackPSO);
-    Context.SetDynamicDescriptor(kSRVs, 6, s_SimulationDensity.GetSRV());
-    Context.SetDynamicDescriptor(kUAVs, 0, s_CloudVolume.GetUAV());
-    Context.Dispatch3D(kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 4, 4, 4);
-
+    {
+        ScopedTimer _prof5(L"Cloud Silumation WriteBack", Context);
+        //WriteBack
+        Context.TransitionResource(s_SimulationDensity, kShaderResourceState);
+        Context.TransitionResource(s_CloudVolume, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+        Context.SetPipelineState(s_CloudSimulationWriteBackPSO);
+        Context.SetDynamicDescriptor(kSRVs, 6, s_SimulationDensity.GetSRV());
+        Context.SetDynamicDescriptor(kUAVs, 0, s_CloudVolume.GetUAV());
+        Context.Dispatch3D(kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 4, 4, 4);
+    }
     Context.TransitionResource(s_CloudVolume, kShaderResourceState);
 
     const uint32_t WindowMax[3] = {
