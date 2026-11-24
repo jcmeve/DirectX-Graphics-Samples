@@ -233,7 +233,7 @@ namespace
 
     NumVar s_SimulationEventHeat("Graphics/Clouds/Simulation/Heat ", 1.0f, 0.0f, 10.0f, 0.1f);
     NumVar s_SimulationEventBuoyancy("Graphics/Clouds/Simulation/Buoyancy (m per s2)", 40.0f, 0.0f, 400.0f, 4.0f);
-    NumVar s_SimulationEventCooling("Graphics/Clouds/Simulation/Cooling ", 0.2f, 0.0f, 5.0f, 0.05f);
+    NumVar s_SimulationEventCooling("Graphics/Clouds/Simulation/Cooling ", 0.7f, 0.0f, 5.0f, 0.05f);
 
 
     VolumeBuffer s_SimulationDivergence;
@@ -475,6 +475,7 @@ void Clouds::Initialize(void)
     const D3D12_BOX SourceBox = { 0,0,0,(UINT)ModelingDesc.Width, (UINT)ModelingDesc.Height, (UINT)ModelingDesc.DepthOrArraySize };
     InitContext.GetCommandList()->CopyTextureRegion(&Dest, 0, 0, 0, &Source, &SourceBox);
 
+    InitContext.TransitionResource(s_CloudVolume, kShaderResourceState);
     InitContext.Finish(true);
 
     s_CloudVelocity.Create(L"Cloud Velocity", Graphics::g_SceneColorBuffer.GetWidth(), ::g_SceneColorBuffer.GetHeight(), 1, DXGI_FORMAT_R32_UINT);

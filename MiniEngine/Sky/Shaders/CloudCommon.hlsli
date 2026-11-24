@@ -181,7 +181,7 @@ CloudModelingSample SampleDisplacedModeling(float3 UVW)
     float4 Displacement = CloudDisplacement.SampleLevel(LinearWrapSampler, DisplacementUVW, 0);
     
     float3 SourceUVW = UVW - Displacement.xyz / VoxelCount; //샘플링 지점 = 현 위치 - 변위
-    SourceUVW.z = clamp(SourceUVW.z, 0.5 / VoxelCount.z, 1.0 - 1.0 / VoxelCount.z);
+    SourceUVW.z = clamp(SourceUVW.z, 0.5 / VoxelCount.z, 1.0 - 0.5 / VoxelCount.z);
     
     CloudModelingSample Ret;
     Ret.Modeling = CloudModeling.SampleLevel(LinearWrapSampler, SourceUVW, 0).rgb;
@@ -266,7 +266,7 @@ float2 GetVoxelCloudDensity(float3 Coord, float3 SamplePosition, float Distance)
     float MipLevel = log2(1.0 + Distance * MipDistanceScale);
     
     // 구름 가까워지면 투명하게 블렌딩
-    float Full = GetUprezzedVoxelCloudDensity(SamplePosition, Distance, MipLevel, Profile, Modeling.g, Modeling.b, Distance < kHFDetailDistance)
+    float Full = GetUprezzedVoxelCloudDensity(SamplePosition - Sample.OffsetMeters, Distance, MipLevel, Profile, Modeling.g, Modeling.b, Distance < kHFDetailDistance)
         * ValueRemap(Distance, 10.0, 120.0, 0.25, 1.0);
     return float2(Profile * Modeling.b, Full);
 }

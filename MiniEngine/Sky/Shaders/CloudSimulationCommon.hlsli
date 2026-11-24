@@ -1,4 +1,4 @@
-cbuffer SimulationConstants : register(b6)
+ï»¿cbuffer SimulationConstants : register(b6)
 {
     uint3 WindowOrigin;
     float DeltaTime;
@@ -12,13 +12,13 @@ cbuffer SimulationConstants : register(b6)
     uint bResetVelocity;
     
     float EventHeat;
-    float Buoyancy;//ºÎ·Â
+    float Buoyancy;//ë¶€ë ¥
     float Cooling;
     float SimulationPad;
 }
 
 static const uint kSimulationWindowSize = 64;
-static const uint kSimulationCellVoxels = 2; //½Ã¹Ä1¼¿ = 2º¹¼¿
+static const uint kSimulationCellVoxels = 2; //ì‹œë®¬1ì…€ = 2ë³µì…€
 static const uint kSimulationWindowVoxels = kSimulationWindowSize * kSimulationCellVoxels;
 static const float kSpongeCells = 4.0;
 static const float kSpongeRate = 8.0;
