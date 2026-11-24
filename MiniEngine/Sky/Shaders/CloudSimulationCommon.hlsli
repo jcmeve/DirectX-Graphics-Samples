@@ -14,8 +14,21 @@
     float EventHeat;
     float Buoyancy;//부력
     float Cooling;
-    float SimulationPad;
+    uint EventType;
+    
+    float3 EventDirection;
+    float EventSpeed;
+    
+    float EventHalfLength;
+    float EventInjection;
+    float2 SimulationPad;
 }
+
+static const uint kEventExplosion = 0;
+static const uint kEventWind = 1;
+static const uint kEventVortex = 2;
+static const float kEventRelaxRate = 8.0;
+
 
 static const uint kSimulationWindowSize = 64;
 static const uint kSimulationCellVoxels = 2; //시뮬1셀 = 2복셀
@@ -44,11 +57,20 @@ float3 TraceBack(Texture3D<float4> Velocity, float3 CellPos, float3 StartVelocit
 
 float GetEventFalloff(float3 VoxelPos)
 {
-    float Falloff = saturate(1.0 - length(VoxelPos - EventCenter) / EventRadius);
+    float3 Offset = VoxelPos - EventCenter;
+    float AxisDistance = clamp(dot(Offset, EventDirection), -EventHalfLength, EventHalfLength);
+    float Falloff = saturate(1.0 - length(Offset - AxisDistance * EventDirection) / EventRadius);
     return Falloff * Falloff;
 }
 
 float GetExpansionSource(float3 VoxelPos)
 {
-    return EventStrength * GetEventFalloff(VoxelPos);
+    return EventStrength * EventInjection * GetEventFalloff(VoxelPos);
+}
+
+float3 GetEventVelocity(float3 VoxelPos)
+{
+    if(EventType == kEventWind)
+        return EventDirection * EventSpeed;
+    return cross(EventDirection, VoxelPos - EventCenter) / EventRadius * EventSpeed;
 }

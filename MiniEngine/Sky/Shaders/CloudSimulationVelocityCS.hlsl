@@ -29,6 +29,19 @@ void main( uint3 DTid : SV_DispatchThreadID )
     
     if (EventStrength > 0.0)
         Temperature = max(Temperature, EventHeat * GetEventFalloff(CellToVoxel(Pos)));
+
+    float3 VoxelPos = CellToVoxel(Pos);
+    float Falloff = GetEventFalloff(VoxelPos);
+    if (Falloff > 0.0)
+    {
+        float Heat = EventHeat * Falloff;
+        if (abs(Heat) > abs(Temperature))
+            Temperature = Heat;
+        
+        if(EventType != kEventExplosion)
+            V = lerp(V, GetEventVelocity(VoxelPos), 1.0 - exp(-kEventRelaxRate * Falloff * DeltaTime));
+    }
+    
     V.z += Buoyancy * Temperature * DeltaTime;
     
     float EdgeDistance = min(min(min(min(min(Pos.x, Pos.y), Pos.z), kSimulationWindowSize - Pos.x), kSimulationWindowSize - Pos.y), kSimulationWindowSize - Pos.z);

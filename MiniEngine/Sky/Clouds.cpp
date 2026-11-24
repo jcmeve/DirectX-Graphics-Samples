@@ -38,6 +38,7 @@
 #include "CompiledShaders/CloudSimulationDivergenceCS.h"
 #include "CompiledShaders/CloudSimulationJacobiCS.h"
 #include "CompiledShaders/CloudSimulationProjectCS.h"
+#include "CompiledShaders/CloudDisplacementClearCS.h"
 
 
 using namespace Graphics;
@@ -118,7 +119,7 @@ namespace
     ComputePSO s_CloudVelocityMergePSO(L"Clouds: Velocity Merge CS");
     ComputePSO s_ShadowMapPSO(L"Clouds: Shadow Map CS");
     ComputePSO s_LightCacheVolumePSO(L"Clouds: Light Cache Volume CS");
-
+    ComputePSO s_CloudDisplacementClearPSO(L"Clouds: Displacement Clear CS");
 
     BoolVar s_EnableClouds("Graphics/Clouds/Enable", true);
     NumVar s_CloudBaseAltitude("Graphics/Clouds/Base Altitude (m)", 2000.0f, 0.0f, 8000.0f, 100.0f);
@@ -204,7 +205,14 @@ namespace
         float EventHeat;
         float Buoyancy;//부력
         float Cooling;
-        float SimulationPad;
+        uint32_t EventType;
+
+        float EventDirection[3];
+        float EventSpeed;
+
+        float EventHalfLength;
+        float EventInjcetion;
+        float SimulationPad[2];
 
     };
 
@@ -219,19 +227,32 @@ namespace
     ComputePSO s_CloudSimulationJacobiPSO(L"Clouds: Simulation Jacobi CS");
     ComputePSO s_CloudSimulationProjectPSO(L"Clouds: Simulation Project CS");
 
-    BoolVar s_SimulationTrigger("Graphics/Clouds/Simulation/Trigger Explosion", false);
+    enum SimulationEventType{kEventExplosion, kEventWind, kEventVortex};
+    const char* kSimulationEventLabels[] = { "Explosion", "Wind", "Vortex" };
+    static const float kInjectionFadeRatio = 0.3f;
+
+    BoolVar s_SimulationTrigger("Graphics/Clouds/Simulation/Trigger Event", false);
+    BoolVar s_SimulationReset("Graphics/Clouds/Simulation/Reset Displacement", false);
+    EnumVar s_SimulationEventType("Graphics/Clouds/Simulation/Event Type", kEventExplosion, _countof(kSimulationEventLabels), kSimulationEventLabels);
+
+    NumVar s_SimulationInjectionTime("Graphics/Clouds/Simulation/Injection Time (s) ", 0.3f, 0.05f, 10.0f, 0.05f);
+    NumVar s_SimulationEventHeat("Graphics/Clouds/Simulation/Heat ", 1.0f, -10.0f, 10.0f, 0.1f);
+    NumVar s_SimulationEventSpeed("Graphics/Clouds/Simulation/Speed(m per s)", 30.0f, 0.0f, 2000.0f, 2.0f);
+    NumVar s_SimulationEventLength("Graphics/Clouds/Simulation/Length(m)", 600.0f, 0.0f, 896.0f, 16.0f);
+    NumVar s_SimulationEventYaw("Graphics/Clouds/Simulation/Yaw (degree)", 0.0f, -180.0f, 180.0f, 5.0f);
+    NumVar s_SimulationEventPitch("Graphics/Clouds/Simulation/Pitch (degree)", 0.0f, -90.0f, 90.0f, 5.0f);
+
+
     NumVar s_SimulationEventX("Graphics/Clouds/Simulation/EventX ", 0.5f, 0.0f, 1.0f, 0.01f);
     NumVar s_SimulationEventZ("Graphics/Clouds/Simulation/EventZ ", 0.5f, 0.0f, 1.0f, 0.01f);
     NumVar s_SimulationEventY("Graphics/Clouds/Simulation/EventY ", 0.13f, 0.0f, 1.0f, 0.01f);
     NumVar s_SimulationEventRadius("Graphics/Clouds/Simulation/Radius (m) ", 120.0f, 15.0f, 1024.0f, 8.0f);
 
     NumVar s_SimulationEventStrength("Graphics/Clouds/Simulation/Expansion Rate (1 per s) ", 5.0f, 0.0f, 500.0, 0.5f);
-    NumVar s_SimulationExpansionTime("Graphics/Clouds/Simulation/Expansion Time (s) ", 0.3f, 0.05f, 3.0f, 0.05f);
     IntVar s_SimulationJacobiIterations("Graphics/Clouds/Simulation/Jacobi Iteractions", 30, 2, 80, 2);
     NumVar s_SimulationEventDrag("Graphics/Clouds/Simulation/Drag ", 0.2f, 0.0f, 10.0f, 0.1f);
     NumVar s_SimulationEventDuration("Graphics/Clouds/Simulation/Duration ", 8.0f, 1.0f, 30.0f, 1.0f);
 
-    NumVar s_SimulationEventHeat("Graphics/Clouds/Simulation/Heat ", 1.0f, 0.0f, 10.0f, 0.1f);
     NumVar s_SimulationEventBuoyancy("Graphics/Clouds/Simulation/Buoyancy (m per s2)", 40.0f, 0.0f, 400.0f, 4.0f);
     NumVar s_SimulationEventCooling("Graphics/Clouds/Simulation/Cooling ", 0.7f, 0.0f, 5.0f, 0.05f);
 
@@ -549,6 +570,10 @@ void Clouds::Initialize(void)
     s_LightCacheVolumePSO.Finalize();
 
     s_LightCacheVolume.Create(L"Cloud Light Cache Volume", VoxelCount[0] / kLightCacheRatio, VoxelCount[1] / kLightCacheRatio, VoxelCount[2] / kLightCacheRatio, 1, DXGI_FORMAT_R32_FLOAT);
+
+    s_CloudDisplacementClearPSO.SetRootSignature(s_RootSig);
+    s_CloudDisplacementClearPSO.SetComputeShader(g_pCloudDisplacementClearCS, sizeof(g_pCloudDisplacementClearCS));
+    s_CloudDisplacementClearPSO.Finalize();
 }
 
 void Clouds::Shutdown(void)
@@ -589,8 +614,6 @@ void Clouds::Render(GraphicsContext& Context, const Math::Camera& Camera, const 
     ScopedTimer _prof(L"Clouds", Context);
 
     CloudConstants Constants = BuildCloudConstants(Camera);
-
-
     
     {
         ScopedTimer _prof2(L"Amortization PS", Context);
@@ -788,7 +811,6 @@ void Clouds::UpdateOccupancy(ComputeContext& Context)
 
 void Clouds::UpdateSimulation(ComputeContext& Context)
 {
-
     const float DeltaTime = Graphics::GetFrameTime();
 
     const float WindRadians = s_GlobalWindDirection * Math::XM_PI / 180.0f;
@@ -796,6 +818,21 @@ void Clouds::UpdateSimulation(ComputeContext& Context)
     s_GlobalWindDeltaMeters[2] = sinf(WindRadians) * s_GlobalWindSpeed * DeltaTime;
     s_GlobalWindOffset[0] = fmodf(s_GlobalWindOffset[0] + s_GlobalWindDeltaMeters[0], kCloudBoundsSize[0]);
     s_GlobalWindOffset[2] = fmodf(s_GlobalWindOffset[2] + s_GlobalWindDeltaMeters[2], kCloudBoundsSize[2]);
+
+    if (s_SimulationReset) {
+        s_SimulationReset = false;
+        s_SimulationTimeLeft = 0.0f;
+
+        Context.SetRootSignature(s_RootSig);
+        Context.TransitionResource(s_CloudDisplacement, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+        Context.SetPipelineState(s_CloudDisplacementClearPSO);
+        Context.SetDynamicDescriptor(kUAVs, 0, s_CloudDisplacement.GetUAV());
+        Context.Dispatch3D(s_VoxelCount[0] / kSimulationCellVoxels, s_VoxelCount[1] / kSimulationCellVoxels, s_VoxelCount[2] / kSimulationCellVoxels, 4, 4, 4);
+        Context.TransitionResource(s_CloudDisplacement, kShaderResourceState);
+
+        const uint32_t VoxelMin[3] = { 0,0,0 };
+        SetVolumeDirty(VoxelMin, s_VoxelCount);
+    }
 
     const bool bEventActive = s_SimulationTrigger;
     if (bEventActive)
@@ -825,13 +862,30 @@ void Clouds::UpdateSimulation(ComputeContext& Context)
     ScopedTimer _prof(L"Cloud Silumation Activated", Context);
 
     const float Elapsed = s_SimulationEventDuration - s_SimulationTimeLeft;
-    const float ExpansionRate = (Elapsed < s_SimulationExpansionTime) ? (float)s_SimulationEventStrength : 0.0f;
+    const float FadeStart = s_SimulationInjectionTime * (1.0f - kInjectionFadeRatio);
+    const float FadeT = max(0.0f, min(1.0f, (Elapsed - FadeStart) / (s_SimulationInjectionTime - FadeStart)));
+    const float Injection = 1.0f - FadeT * FadeT * (3.0f - 2.0f * FadeT);
     s_SimulationTimeLeft -= DeltaTime;
     
+    const bool bExplosion = s_SimulationEventType == kEventExplosion;
+    const float CellMeters = s_VoxelMeters * kSimulationCellVoxels;
+    const float Yaw = s_SimulationEventYaw * Math::XM_PI / 180.0f;
+    const float Pitch = s_SimulationEventPitch * Math::XM_PI / 180.0f;
+
     CloudSimulationConstants Constants = {};
     Constants.DeltaTime = DeltaTime;
     Constants.EventRadius = s_SimulationEventRadius / s_VoxelMeters;
-    Constants.EventStrength = ExpansionRate;
+    Constants.EventStrength = bExplosion ? (float)s_SimulationEventStrength : 0.0f;
+    Constants.EventInjcetion = Injection;
+    Constants.EventType = (uint32_t)s_SimulationEventType;
+    Constants.EventSpeed = s_SimulationEventSpeed / CellMeters;
+    Constants.EventHalfLength = bExplosion ? 0.0f : 0.5f * s_SimulationEventLength / s_VoxelMeters;
+
+    Constants.EventDirection[0] = cosf(Pitch) * cosf(Yaw);
+    Constants.EventDirection[1] = cosf(Pitch) * sinf(Yaw);
+    Constants.EventDirection[2] = sinf(Pitch);
+
+
     Constants.Drag = s_SimulationEventDrag;
     Constants.bEventActive = bEventActive ? 1 : 0;
     Constants.bResetVelocity = bEventActive ? 1 : 0;

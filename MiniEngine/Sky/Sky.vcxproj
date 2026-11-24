@@ -64,6 +64,9 @@
     <FxCompile Include="Shaders\CloudBrickOccupancyCS.hlsl">
       <ShaderType>Compute</ShaderType>
     </FxCompile>
+    <FxCompile Include="Shaders\CloudDisplacementClearCS.hlsl">
+      <ShaderType>Compute</ShaderType>
+    </FxCompile>
     <FxCompile Include="Shaders\CloudReprojectionPS.hlsl">
       <ShaderType>Pixel</ShaderType>
     </FxCompile>
