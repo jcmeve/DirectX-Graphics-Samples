@@ -494,7 +494,7 @@ void Clouds::Initialize(void)
     Source.SubresourceIndex = 0;
 
     const D3D12_BOX SourceBox = { 0,0,0,(UINT)ModelingDesc.Width, (UINT)ModelingDesc.Height, (UINT)ModelingDesc.DepthOrArraySize };
-    InitContext.GetCommandList()->CopyTextureRegion(&Dest, 0, 0, 0, &Source, &SourceBox);
+    InitContext.GetCommandList()->CopyTextureRegion(&Dest, 0, 0, 16, &Source, &SourceBox);
 
     InitContext.TransitionResource(s_CloudVolume, kShaderResourceState);
     InitContext.Finish(true);
