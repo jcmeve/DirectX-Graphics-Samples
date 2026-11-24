@@ -74,3 +74,9 @@ float3 GetEventVelocity(float3 VoxelPos)
         return EventDirection * EventSpeed;
     return cross(EventDirection, VoxelPos - EventCenter) / EventRadius * EventSpeed;
 }
+
+bool IsOpenBottom()
+{
+    return WindowOrigin.z == 0;
+}
+

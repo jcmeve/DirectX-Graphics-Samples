@@ -6,7 +6,8 @@ RWTexture3D<float> Pressure : register(u1);
 
 float3 LoadVelocity(int3 Cell)
 {
-    return (IsInsideWindow(Cell) ? Velocity[Cell.xyz].xyz : 0.0);
+    Cell = clamp(Cell, 0, int(kSimulationWindowSize) - 1);
+    return Velocity[Cell].xyz;
 }
 
 [numthreads(4, 4, 4)]

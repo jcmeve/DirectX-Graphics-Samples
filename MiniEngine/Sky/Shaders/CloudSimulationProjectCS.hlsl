@@ -11,9 +11,6 @@ float LoadPressure(int3 Cell)
 [numthreads(4, 4, 4)]
 void main( uint3 DTid : SV_DispatchThreadID )
 {
-    if(any(DTid == 0) || any(DTid==kSimulationWindowSize-1))
-        return;
-    
     int3 Cell = int3(DTid);
     
     float3 Gradient = 0.5 * float3(

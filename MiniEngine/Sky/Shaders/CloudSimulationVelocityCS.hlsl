@@ -44,7 +44,8 @@ void main( uint3 DTid : SV_DispatchThreadID )
     
     V.z += Buoyancy * Temperature * DeltaTime;
     
-    float EdgeDistance = min(min(min(min(min(Pos.x, Pos.y), Pos.z), kSimulationWindowSize - Pos.x), kSimulationWindowSize - Pos.y), kSimulationWindowSize - Pos.z);
+    float BottomDistance = IsOpenBottom() ? kSpongeCells : Pos.z;
+    float EdgeDistance = min(min(min(min(min(Pos.x, Pos.y), BottomDistance), kSimulationWindowSize - Pos.x), kSimulationWindowSize - Pos.y), kSimulationWindowSize - Pos.z);
     float Sponge = 1.0 - saturate(EdgeDistance / kSpongeCells);
     
     V *= exp(-kSpongeRate * Sponge * DeltaTime);

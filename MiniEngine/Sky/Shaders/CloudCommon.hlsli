@@ -181,12 +181,17 @@ CloudModelingSample SampleDisplacedModeling(float3 UVW)
     float4 Displacement = CloudDisplacement.SampleLevel(LinearWrapSampler, DisplacementUVW, 0);
     
     float3 SourceUVW = UVW - Displacement.xyz / VoxelCount; //샘플링 지점 = 현 위치 - 변위
-    SourceUVW.z = clamp(SourceUVW.z, 0.5 / VoxelCount.z, 1.0 - 0.5 / VoxelCount.z);
     
     CloudModelingSample Ret;
-    Ret.Modeling = CloudModeling.SampleLevel(LinearWrapSampler, SourceUVW, 0).rgb;
-    //Ret.Modeling.r *= exp(-Displacement.w);
     Ret.OffsetMeters = (Displacement.xyz / VoxelCount).xzy * BoundsSize;
+    if (SourceUVW.z < 0.0 || SourceUVW.z > 1.0)
+    {
+        Ret.Modeling = 0.0;
+        return Ret;
+    }
+    SourceUVW.z = clamp(SourceUVW.z, 0.5 / VoxelCount.z, 1.0 - 0.5 / VoxelCount.z);
+    Ret.Modeling = CloudModeling.SampleLevel(LinearWrapSampler, SourceUVW, 0).rgb;
+    Ret.Modeling.r *= exp(-Displacement.w);
     return Ret;
 }
 
