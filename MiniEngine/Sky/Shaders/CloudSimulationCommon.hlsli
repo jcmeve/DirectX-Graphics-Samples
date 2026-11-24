@@ -36,6 +36,9 @@ static const uint kSimulationWindowVoxels = kSimulationWindowSize * kSimulationC
 static const float kSpongeCells = 4.0;
 static const float kSpongeRate = 8.0;
 
+static const float kVortexCoreRatio = 0.25;
+static const float kVortexInFlow = 0.3;
+
 SamplerState LinearClampSampler : register(s0);
 
 bool IsInsideWindow(int3 Cell)
@@ -72,7 +75,16 @@ float3 GetEventVelocity(float3 VoxelPos)
 {
     if(EventType == kEventWind)
         return EventDirection * EventSpeed;
-    return cross(EventDirection, VoxelPos - EventCenter) / EventRadius * EventSpeed;
+
+    float3 Offset = VoxelPos - EventCenter;
+    float3 R = Offset - dot(Offset, EventDirection) * EventDirection;
+    float Distance = length(R);
+    if (Distance < 1e-3)
+        return 0.0;
+    float Core = EventRadius * kVortexCoreRatio;
+    float Tangential = EventSpeed * (Distance < Core ? Distance / Core : Core / Distance);
+    float3 RDir = R / Distance;
+    return Tangential * (cross(EventDirection, RDir) - kVortexInFlow * RDir);
 }
 
 bool IsOpenBottom()
@@ -80,3 +92,7 @@ bool IsOpenBottom()
     return WindowOrigin.z == 0;
 }
 
+float3 LoadWindowVelocity(Texture3D<float4> Velocity, int3 Cell)
+{
+    return Velocity[clamp(Cell, 0, int(kSimulationWindowSize) - 1)].xyz;
+}
