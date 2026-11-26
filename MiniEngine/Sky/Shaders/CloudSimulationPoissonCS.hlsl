@@ -29,17 +29,6 @@ float GetEigen(uint k)
 
 float TransformLine(uint k)
 {
-    //float Sum = 0.0;
-    //uint m = 0;
-    //for (uint i = 0; i < kSimulationWindowSize; ++i)
-    //{
-    //    m += k + 1;
-    //    if(m>=kPeriod)
-    //        m -= kPeriod;
-    //    Sum += Line[i] * SinTable[m];
-    //}
-    //return Sum;
-    
     float A = kPi * (k + 1) / (kSimulationWindowSize + 1);
     float Cos2 = 2.0 * cos(A);
     float S0 = 0.0, S1 = sin(A);
@@ -53,7 +42,6 @@ float TransformLine(uint k)
         S1 = S2;
     }
     return Sum;
-
 }
 
 [numthreads(kSimulationWindowSize, 1, 1)]

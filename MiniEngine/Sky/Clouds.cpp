@@ -41,6 +41,8 @@
 #include "CompiledShaders/CloudSimulationProjectCS.h"
 #include "CompiledShaders/CloudDisplacementClearCS.h"
 
+#include "CompiledShaders/CloudSimulationResidualCS.h"
+#include "ReadbackBuffer.h"
 
 using namespace Graphics;
 
@@ -273,6 +275,12 @@ namespace
     uint32_t s_SimulationWindowOrigin[3];
     float s_SimulationEventCenter[3];
     float s_SimulationTimeLeft = 0.0f;
+
+
+    ComputePSO s_CloudSimulationResidualPSO(L"Clouds: Simulation Residual CS");
+    ByteAddressBuffer s_SimulationStats;
+    ReadbackBuffer s_SimulationStatsReadback;
+    static const uint32_t kStatsLogInterval = 30;
 
 
 
@@ -580,6 +588,14 @@ void Clouds::Initialize(void)
     s_CloudDisplacementClearPSO.SetRootSignature(s_RootSig);
     s_CloudDisplacementClearPSO.SetComputeShader(g_pCloudDisplacementClearCS, sizeof(g_pCloudDisplacementClearCS));
     s_CloudDisplacementClearPSO.Finalize();
+
+
+    s_CloudSimulationResidualPSO.SetRootSignature(s_RootSig);
+    s_CloudSimulationResidualPSO.SetComputeShader(g_pCloudSimulationResidualCS, sizeof(g_pCloudSimulationResidualCS));
+    s_CloudSimulationResidualPSO.Finalize();
+    s_SimulationStats.Create(L"Cloud Stats", 4, 4);
+    s_SimulationStatsReadback.Create(L"Cloud Stats Readback", 4, 4);
+
 }
 
 void Clouds::Shutdown(void)
@@ -594,6 +610,8 @@ void Clouds::Shutdown(void)
     s_CloudVelocity.Destroy();
     s_BrickOccupancy.Destroy();
     s_LightCacheVolume.Destroy();
+    s_SimulationStats.Destroy();
+    s_SimulationStatsReadback.Destroy();
    
 #ifdef BRICK_DISTANCE_FIELD
     s_BrickDistance.Destroy();
@@ -938,6 +956,18 @@ void Clouds::UpdateSimulation(ComputeContext& Context)
                 Context.Dispatch(kSimulationWindowSize, kSimulationWindowSize, 1);
                 Context.InsertUAVBarrier(s_SimulationPressure[0]);
             }
+
+            //Context.SetPipelineState(s_CloudSimulationJacobiPSO);
+            //for (int i = 0; i < 2; ++i) {
+            //    VolumeBuffer& Src = s_SimulationPressure[i % 2];
+            //    VolumeBuffer& Dst = s_SimulationPressure[(i + 1) % 2];
+            //    Context.TransitionResource(Src, kShaderResourceState);
+            //    Context.TransitionResource(Dst, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+            //    Context.SetDynamicDescriptor(kSRVs, 8, Src.GetSRV());
+            //    Context.SetDynamicDescriptor(kUAVs, 0, Dst.GetUAV());
+            //    Context.Dispatch3D(kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 4, 4, 4);
+
+            //}
         }
         else {
             Context.SetPipelineState(s_CloudSimulationJacobiPSO);
@@ -958,6 +988,25 @@ void Clouds::UpdateSimulation(ComputeContext& Context)
         ScopedTimer _prof4(L"Cloud Silumation Project", Context);
         //Project
         Context.TransitionResource(s_SimulationPressure[0], kShaderResourceState);
+
+
+        {
+            Context.TransitionResource(s_SimulationStats, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+            Context.ClearUAV(s_SimulationStats);
+            Context.SetPipelineState(s_CloudSimulationResidualPSO);
+            Context.SetDynamicDescriptor(kSRVs, 8, s_SimulationPressure[0].GetSRV());
+            Context.SetDynamicDescriptor(kUAVs, 0, s_SimulationStats.GetUAV());
+            Context.Dispatch3D(kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 4, 4, 4);
+            Context.CopyBuffer(s_SimulationStatsReadback, s_SimulationStats);
+            if (Graphics::GetFrameCount() % kStatsLogInterval == 0) {
+                const float* Stats = (const float*)s_SimulationStatsReadback.Map();
+                Utility::Printf("Pressure Residual %.3e MaxDiv %.3e MaxP %3.e Rel %3.e\n", Stats[0], Stats[1], Stats[2], Stats[0] / (Stats[1] + 1e-20f));
+                s_SimulationStatsReadback.Unmap();
+            }
+        }
+
+
+
         Context.TransitionResource(Velocity, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
         Context.SetPipelineState(s_CloudSimulationProjectPSO);
         Context.SetDynamicDescriptor(kSRVs, 8, s_SimulationPressure[0].GetSRV());
