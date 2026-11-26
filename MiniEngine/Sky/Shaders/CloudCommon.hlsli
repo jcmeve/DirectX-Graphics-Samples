@@ -29,14 +29,8 @@ Texture3D<float4> CloudNoise : register(t4); // RG = Curly-Alligator 저/고주�
 Texture3D<float4> CloudModeling : register(t5); // R = Dimensional Profile, G = Detail Type, B = Density Scale
 
 Texture3D<float> CloudBrickOccupancy : register(t12);
-//#define BRICK_DISTANCE_FIELD
 
-#ifdef BRICK_DISTANCE_FIELD
-Texture3D<float> CloudBrickDistance : register(t13);
-#else
 Texture3D<float> CloudSectorOccupancy : register(t13);
-#endif
-
 Texture3D<float4> CloudDisplacement : register(t15); //변위
 
 
@@ -87,27 +81,7 @@ float GetOccupancySkipDistance(float3 LocalPosition, float3 Dir, OccupancyGrid G
 {
     LocalPosition -= GlobalWindOffset;
     LocalPosition.xz -= floor(LocalPosition.xz / BoundsSize.xz) * BoundsSize.xz;
-#ifdef BRICK_DISTANCE_FIELD
-    int3 Brick = clamp(int3(floor(LocalPosition / Grid.BrickMeters)), 0, Grid.BrickCount - 1);
-    float Distance = CloudBrickDistance[Brick.xzy];
 
-    if(Distance<=0.0)
-        return 0.0; 
-    
-    float3 EmptyMin = (Brick - (Distance - 1)) * Grid.BrickMeters;
-    float3 EmptyMax = (Brick + Distance) * Grid.BrickMeters;
-    
-    float3 Exit = float3((Dir.x > 0.0) ? EmptyMax.x : EmptyMin.x,
-                         (Dir.y > 0.0) ? EmptyMax.y : EmptyMin.y,
-                         (Dir.z > 0.0) ? EmptyMax.z : EmptyMin.z);
-    
-    float3 T = float3((abs(Dir.x) > 1e-5) ? ((Exit.x - LocalPosition.x) / Dir.x) : 1e20,
-                      (abs(Dir.y) > 1e-5) ? ((Exit.y - LocalPosition.y) / Dir.y) : 1e20,
-                      (abs(Dir.z) > 1e-5) ? ((Exit.z - LocalPosition.z) / Dir.z) : 1e20);
-    
-    return max(min(min(T.x, T.y), T.z), 0.0) + kCellExitBias;
-#else
-    
     int3 Brick = clamp(int3(floor(LocalPosition / Grid.BrickMeters)), 0, Grid.BrickCount - 1);
     int3 Sector = Brick / int(kSectorBricks);
 
@@ -121,7 +95,7 @@ float GetOccupancySkipDistance(float3 LocalPosition, float3 Dir, OccupancyGrid G
         return GetCellExitDistance(LocalPosition, Dir, Grid.BrickMeters) + kCellExitBias;
     }
     return 0.0;
-#endif
+
 }
 
 
