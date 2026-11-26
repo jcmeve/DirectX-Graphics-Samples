@@ -37,6 +37,7 @@
 #include "CompiledShaders/CloudSimulationWriteBackCS.h"
 #include "CompiledShaders/CloudSimulationDivergenceCS.h"
 #include "CompiledShaders/CloudSimulationJacobiCS.h"
+#include "CompiledShaders/CloudSimulationPoissonCS.h"
 #include "CompiledShaders/CloudSimulationProjectCS.h"
 #include "CompiledShaders/CloudDisplacementClearCS.h"
 
@@ -224,7 +225,11 @@ namespace
     ComputePSO s_CloudSimulationWriteBackPSO(L"Clouds: Simulation WriteBack CS");
     ComputePSO s_CloudSimulationDivergencePSO(L"Clouds: Simulation Divergence CS");
     ComputePSO s_CloudSimulationJacobiPSO(L"Clouds: Simulation Jacobi CS");
+    ComputePSO s_CloudSimulationPoissonPSO(L"Clouds: Simulation Poisson CS");
     ComputePSO s_CloudSimulationProjectPSO(L"Clouds: Simulation Project CS");
+
+    BoolVar s_SimulationUseDST("Graphics/Clouds/Simulation/Use DST", true);
+
 
     enum SimulationEventType{kEventExplosion, kEventWind, kEventVortex};
     const char* kSimulationEventLabels[] = { "Explosion", "Wind", "Vortex" };
@@ -545,6 +550,10 @@ void Clouds::Initialize(void)
     s_CloudSimulationJacobiPSO.SetRootSignature(s_RootSig);
     s_CloudSimulationJacobiPSO.SetComputeShader(g_pCloudSimulationJacobiCS, sizeof(g_pCloudSimulationJacobiCS));
     s_CloudSimulationJacobiPSO.Finalize();
+
+    s_CloudSimulationPoissonPSO.SetRootSignature(s_RootSig);
+    s_CloudSimulationPoissonPSO.SetComputeShader(g_pCloudSimulationPoissonCS, sizeof(g_pCloudSimulationPoissonCS));
+    s_CloudSimulationPoissonPSO.Finalize();
 
     s_CloudSimulationProjectPSO.SetRootSignature(s_RootSig);
     s_CloudSimulationProjectPSO.SetComputeShader(g_pCloudSimulationProjectCS, sizeof(g_pCloudSimulationProjectCS));
@@ -914,22 +923,35 @@ void Clouds::UpdateSimulation(ComputeContext& Context)
         Context.Dispatch3D(kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 4, 4, 4);
     }
     {
-        ScopedTimer _prof3(L"Cloud Silumation Jacobi", Context);
+        ScopedTimer _prof3(L"Cloud Silumation Pressure", Context);
         //Jacobi
         Context.TransitionResource(s_SimulationDivergence, kShaderResourceState);
-        Context.SetPipelineState(s_CloudSimulationJacobiPSO);
         Context.SetDynamicDescriptor(kSRVs, 7, s_SimulationDivergence.GetSRV());
 
-        const int JacobiIterations = (s_SimulationJacobiIterations + 1) & ~1;
-        for (int i = 0; i < JacobiIterations; ++i) {
-            VolumeBuffer& Src = s_SimulationPressure[i % 2];
-            VolumeBuffer& Dst = s_SimulationPressure[(i + 1) % 2];
-            Context.TransitionResource(Src, kShaderResourceState);
-            Context.TransitionResource(Dst, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
-            Context.SetDynamicDescriptor(kSRVs, 8, Src.GetSRV());
-            Context.SetDynamicDescriptor(kUAVs, 0, Dst.GetUAV());
-            Context.Dispatch3D(kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 4, 4, 4);
+        if (s_SimulationUseDST) {
+            static const uint32_t kPassAxis[5] = { 0,1,2,1,0 };
+            Context.SetPipelineState(s_CloudSimulationPoissonPSO);
+            Context.TransitionResource(s_SimulationPressure[0], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+            Context.SetDynamicDescriptor(kUAVs, 0, s_SimulationPressure[0].GetUAV());
+            for (uint32_t Pass = 0; Pass < 5; ++Pass) {
+                Context.SetConstants(kOccupancyConstants, kPassAxis[Pass], Pass == 2 ? 1u : 0u, Pass == 0 ? 1u : 0u);
+                Context.Dispatch(kSimulationWindowSize, kSimulationWindowSize, 1);
+                Context.InsertUAVBarrier(s_SimulationPressure[0]);
+            }
+        }
+        else {
+            Context.SetPipelineState(s_CloudSimulationJacobiPSO);
+            const int JacobiIterations = (s_SimulationJacobiIterations + 1) & ~1;
+            for (int i = 0; i < JacobiIterations; ++i) {
+                VolumeBuffer& Src = s_SimulationPressure[i % 2];
+                VolumeBuffer& Dst = s_SimulationPressure[(i + 1) % 2];
+                Context.TransitionResource(Src, kShaderResourceState);
+                Context.TransitionResource(Dst, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+                Context.SetDynamicDescriptor(kSRVs, 8, Src.GetSRV());
+                Context.SetDynamicDescriptor(kUAVs, 0, Dst.GetUAV());
+                Context.Dispatch3D(kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 4, 4, 4);
 
+            }
         }
     }
     {
