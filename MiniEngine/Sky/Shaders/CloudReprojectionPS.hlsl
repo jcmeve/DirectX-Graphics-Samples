@@ -10,8 +10,6 @@ Texture2D<float> SceneDepth : register(t3);
 
 Texture2D<float4>   PreviusCloud : register(t8);
 RWTexture2D<float4> CurrentCloud : register(u0);
-Texture2D<float>    PreviusCloudDepth : register(t9);
-RWTexture2D<float>  CurrentCloudDepth : register(u1);
 
 RWTexture2D<uint> CloudVelocity : register(u2);
 
@@ -84,7 +82,6 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     if (Hit.x >= Hit.y)
     {
         CurrentCloud[Pixel] = 0.0;
-        CurrentCloudDepth[Pixel] = 0.0;
         CloudVelocity[Pixel] = kNoCloudVelocity;
         return 0.0;
     }
@@ -105,7 +102,6 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
         PreviusUV = GetPreviusUV(Dir, VelocityDepth, ClipPosition);
 
         CurrentCloud[Pixel] = Color;
-        CurrentCloudDepth[Pixel] = CloudDepth;
         WriteCloudVelocity(Pixel, Color.a, GetPreviusAlpha(PreviusUV), PreviusUV * TargetSize, Position.xy);
         return Color;
     }
@@ -159,7 +155,6 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     if (!(ClipPosition.w > 0.0 && all(PreviusUV >= 0.0) && all(PreviusUV <= 1.0)))
     {
         CurrentCloud[Pixel] = MarchedNearColor;
-        CurrentCloudDepth[Pixel] = CloudDepth;
         WriteCloudVelocity(Pixel, MarchedNearColor.a, 0.0, PreviusUV * TargetSize, Position.xy);
         return MarchedNearColor;
     }
@@ -200,7 +195,6 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     //else
     //    FinalColor = float4(0.2, 0.2, 0.2, 1.0);
     CurrentCloud[Pixel] = FinalColor;
-    CurrentCloudDepth[Pixel] = CloudDepth;
     WriteCloudVelocity(Pixel, FinalColor.a, PreviusColor.a, PreviusUV * TargetSize, Position.xy);
     return FinalColor;
 }

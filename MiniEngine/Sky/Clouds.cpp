@@ -178,7 +178,6 @@ namespace
 
 #pragma region AMORTIZATION
     ColorBuffer s_CloudHistory[2];
-    ColorBuffer s_CloudDepthHistory[2];
     ColorBuffer s_CloudRenderTarget;
     ColorBuffer s_CloudDepthRenderTarget;
 
@@ -459,8 +458,6 @@ void Clouds::Initialize(void)
     s_ShadowMap.Create(L"Cloud Shadow Map", kShadowMapSize, kShadowMapSize, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
     s_CloudHistory[0].Create(L"CloudHistory 0", Graphics::g_SceneColorBuffer.GetWidth(), Graphics::g_SceneColorBuffer.GetHeight(), 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
     s_CloudHistory[1].Create(L"CloudHistory 1", Graphics::g_SceneColorBuffer.GetWidth(), Graphics::g_SceneColorBuffer.GetHeight(), 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
-    s_CloudDepthHistory[0].Create(L"CloudDepthHistory 0", Graphics::g_SceneColorBuffer.GetWidth(), Graphics::g_SceneColorBuffer.GetHeight(), 1, DXGI_FORMAT_R16_FLOAT);
-    s_CloudDepthHistory[1].Create(L"CloudDepthHistory 1", Graphics::g_SceneColorBuffer.GetWidth(), Graphics::g_SceneColorBuffer.GetHeight(), 1, DXGI_FORMAT_R16_FLOAT);
 
     const uint32_t CloudRenderTargetWidth = (Graphics::g_SceneColorBuffer.GetWidth() + kAmortizationSize - 1) / kAmortizationSize;
     const uint32_t CloudRenderTargetHeight = (Graphics::g_SceneColorBuffer.GetHeight() + kAmortizationSize - 1) / kAmortizationSize;
@@ -583,8 +580,6 @@ void Clouds::Shutdown(void)
     s_ShadowMap.Destroy();
     s_CloudHistory[0].Destroy();
     s_CloudHistory[1].Destroy();
-    s_CloudDepthHistory[0].Destroy();
-    s_CloudDepthHistory[1].Destroy();
     s_CloudRenderTarget.Destroy();
     s_CloudDepthRenderTarget.Destroy();
     s_CloudVelocity.Destroy();
@@ -682,23 +677,15 @@ void Clouds::Render(GraphicsContext& Context, const Math::Camera& Camera, const 
         {
             Context.TransitionResource(s_CloudHistory[0], kShaderResourceState);
             Context.TransitionResource(s_CloudHistory[1], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
-            Context.TransitionResource(s_CloudDepthHistory[0], kShaderResourceState);
-            Context.TransitionResource(s_CloudDepthHistory[1], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
             Context.SetDynamicDescriptor(kSRVs, 8, s_CloudHistory[0].GetSRV());
             Context.SetDynamicDescriptor(kUAVs, 0, s_CloudHistory[1].GetUAV());
-            Context.SetDynamicDescriptor(kSRVs, 9, s_CloudDepthHistory[0].GetSRV());
-            Context.SetDynamicDescriptor(kUAVs, 1, s_CloudDepthHistory[1].GetUAV());
         }
         else
         {
             Context.TransitionResource(s_CloudHistory[1], kShaderResourceState);
             Context.TransitionResource(s_CloudHistory[0], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
-            Context.TransitionResource(s_CloudDepthHistory[1], kShaderResourceState);
-            Context.TransitionResource(s_CloudDepthHistory[0], D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
             Context.SetDynamicDescriptor(kSRVs, 8, s_CloudHistory[1].GetSRV());
             Context.SetDynamicDescriptor(kUAVs, 0, s_CloudHistory[0].GetUAV());
-            Context.SetDynamicDescriptor(kSRVs, 9, s_CloudDepthHistory[1].GetSRV());
-            Context.SetDynamicDescriptor(kUAVs, 1, s_CloudDepthHistory[0].GetUAV());
         }
 
         Context.SetDynamicConstantBufferView(kCloudCBV, sizeof(Constants), &Constants);
