@@ -30,7 +30,7 @@ static const uint kEventVortex = 2;
 static const float kEventRelaxRate = 8.0;
 
 
-static const uint kSimulationWindowSize = 64;
+static const uint kSimulationWindowSize = 64*4;
 static const uint kSimulationCellVoxels = 2; //시뮬1셀 = 2복셀
 static const uint kSimulationWindowVoxels = kSimulationWindowSize * kSimulationCellVoxels;
 static const float kSpongeCells = 4.0;

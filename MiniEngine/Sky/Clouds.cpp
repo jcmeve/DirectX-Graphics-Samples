@@ -155,6 +155,7 @@ namespace
 
     VolumeBuffer s_VoxelOccupancyBits;
     VolumeBuffer s_SimulationChangeMask;
+    VolumeBuffer s_CommitedDisplacement;
     const uint32_t kOccupancyBitBlock[3] = { 4, 4, 2 };//32바이트 비트마스크 & 64복셀
     bool s_bOccupancyRebuild = true;
     bool s_bOccupancyWindowDirty = false;
@@ -224,7 +225,7 @@ namespace
 
     };
 
-    static const uint32_t kSimulationWindowSize = 64;
+    static const uint32_t kSimulationWindowSize = 64*4;
     static const uint32_t kSimulationCellVoxels = 2;
     static const uint32_t kSimulationWindowVoxels = kSimulationWindowSize*kSimulationCellVoxels;
 
@@ -532,6 +533,8 @@ void Clouds::Initialize(void)
 
     s_VoxelOccupancyBits.Create(L"Cloud Voxel Occupancy Bits", VoxelCount[0] / kOccupancyBitBlock[0], VoxelCount[1] / kOccupancyBitBlock[1], VoxelCount[2] / kOccupancyBitBlock[2], 1, DXGI_FORMAT_R32_UINT);
     s_SimulationChangeMask.Create(L"Cloud Simulation Change Mask", kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 1, DXGI_FORMAT_R8_UINT);
+    s_CommitedDisplacement.Create(L"Cloud Commited Displacement", VoxelCount[0] / kSimulationCellVoxels, VoxelCount[1] / kSimulationCellVoxels, VoxelCount[2] / kSimulationCellVoxels, 1, DXGI_FORMAT_R16G16B16A16_FLOAT);
+
 
     s_bOccupancyRebuild = true;
     s_bLightCacheDirty = true;
@@ -601,6 +604,7 @@ void Clouds::Shutdown(void)
     s_SectorOccupancy.Destroy();
     s_VoxelOccupancyBits.Destroy();
     s_SimulationChangeMask.Destroy();
+    s_CommitedDisplacement.Destroy();
     s_LightCacheVolume.Destroy();
     s_SimulationVelocity[0].Destroy();
     s_SimulationVelocity[1].Destroy();
@@ -739,6 +743,7 @@ void Clouds::UpdateOccupancy(ComputeContext& Context)
         Constants.bFullRebuild = 1;
         for (int i = 0; i < 3; ++i)
             TexelCount[i] = s_VoxelCount[i] / kOccupancyBitBlock[i];
+        Context.CopyBuffer(s_CommitedDisplacement, s_CloudDisplacement);
     }
     else
     {
@@ -936,11 +941,14 @@ void Clouds::UpdateSimulation(ComputeContext& Context)
         Context.TransitionResource(Velocity, kShaderResourceState);
         Context.TransitionResource(s_SimulationDisplacement, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
         Context.TransitionResource(s_SimulationChangeMask, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+        Context.TransitionResource(s_CommitedDisplacement, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+
         Context.SetPipelineState(s_CloudSimulationAdvectionPSO);
         Context.SetDynamicDescriptor(kSRVs, 6, Velocity.GetSRV());
         Context.SetDynamicDescriptor(kSRVs, 15, s_CloudDisplacement.GetSRV());
         Context.SetDynamicDescriptor(kUAVs, 0, s_SimulationDisplacement.GetUAV());
         Context.SetDynamicDescriptor(kUAVs, 1, s_SimulationChangeMask.GetUAV());
+        Context.SetDynamicDescriptor(kUAVs, 2, s_CommitedDisplacement.GetUAV());
         Context.Dispatch3D(kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 4, 4, 4);
     }
 
