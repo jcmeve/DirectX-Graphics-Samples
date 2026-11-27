@@ -24,6 +24,8 @@ static const float kMarchedColorChangeSensitive = 20.0;
 static const uint kNoCloudVelocity = 0xFFFFFFFF;
 static const float kVelocityAlphaThreshold = 1.0 / 255.0;
 
+static const float kHistorySnapPixels = 0.05;
+
 float2 GetPreviusUV(float3 Dir, float Depth, out float4 ClipPosition)
 {
     ClipPosition = (Depth > 0.0)
@@ -103,7 +105,7 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
 
         CurrentCloud[Pixel] = Color;
         WriteCloudVelocity(Pixel, Color.a, GetPreviusAlpha(PreviusUV), PreviusUV * TargetSize, Position.xy);
-        return Color;
+        return float4(0.0, 0.0, 0.0, 1.0);;
     }
     float2 LowUV = ((Position.xy - SampleOffset - 0.5) / kAmortizationSize + 0.5) / LowSize;
     float4 MarchedNearColor = CloudRenderTarget.SampleLevel(LinearClampSampler, LowUV, 0);
@@ -159,15 +161,18 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
         return MarchedNearColor;
     }
     
-    float4 PreviusColor = PreviusCloud.SampleLevel(LinearClampSampler, PreviusUV, 0); 
-    float MotionPixels = length(PreviusUV * TargetSize - float2(Pixel));
+    //float4 PreviusColor = PreviusCloud.SampleLevel(LinearClampSampler, PreviusUV, 0); 
+    float MotionPixels = length(PreviusUV * TargetSize - Position.xy);
+    float4 PreviusColor = (MotionPixels < kHistorySnapPixels)
+    ? PreviusCloud[Pixel]
+    : PreviusCloud.SampleLevel(LinearClampSampler, PreviusUV, 0);
     float ClampWeight = saturate(MotionPixels * kMotionSensitive);
     float4 ReprojectionColor = lerp(PreviusColor, ClipToAABB(PreviusColor, BoxMin, BoxMax), ClampWeight);
     
     float ColorChanged = length(PreviusColor - ReprojectionColor) / (length(PreviusColor) + length(ReprojectionColor) + 1e-5);
     //float HistoryWeight = saturate(1.0 - max(ColorChanged - 0.01, 0.0) * kColorChangeSensitive);
     
-    float2 LowTexel = LowUV * LowSize + 0.5;
+    float2 LowTexel = LowUV * LowSize - 0.5;
     float2 LowFrac = frac(LowTexel);
     float MarchedColorChanged = 0.0;
     for (int BlockY = 0; BlockY <= 1; ++BlockY)
@@ -178,7 +183,10 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
             float2 MarchedPixelCenter = float2(MarchedLowPixel * kAmortizationSize + SampleOffset) + 0.5;
             float2 MarchedPreviusUV = PreviusUV + (MarchedPixelCenter - Position.xy) / TargetSize;
             float4 MarchedCurrent = CloudRenderTarget[MarchedLowPixel];
-            float4 MarchedPrevius = PreviusCloud.SampleLevel(LinearClampSampler, MarchedPreviusUV, 0);
+            //float4 MarchedPrevius = PreviusCloud.SampleLevel(LinearClampSampler, MarchedPreviusUV, 0);
+            float4 MarchedPrevius = (MotionPixels < kHistorySnapPixels)
+                ? PreviusCloud[MarchedLowPixel * kAmortizationSize + SampleOffset]
+                : PreviusCloud.SampleLevel(LinearClampSampler, MarchedPreviusUV, 0);
             
             float BilinearWeight = (Blockx ? LowFrac.x : 1.0 - LowFrac.x) * (BlockY ? LowFrac.y : 1.0 - LowFrac.y);
             MarchedColorChanged += BilinearWeight * length(MarchedCurrent - MarchedPrevius) / (length(MarchedCurrent) + length(MarchedPrevius) + 1e-5);
@@ -186,15 +194,29 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
         }
     }
     MarchedColorChanged *= 1.0 - ClampWeight;
-    float HistoryWeight = saturate(1.0 - max(max(ColorChanged - 0.01, 0.0) * kColorChangeSensitive, MarchedColorChanged*kMarchedColorChangeSensitive));
-    
+    //float HistoryWeight = saturate(1.0 - max(max(ColorChanged - 0.01, 0.0) * kColorChangeSensitive, MarchedColorChanged*kMarchedColorChangeSensitive));
+    float HistoryWeight = saturate(1.0 - max(ColorChanged - 0.01, 0.0) * kColorChangeSensitive);
     float4 FinalColor = lerp(MarchedNearColor, ReprojectionColor, HistoryWeight);
+    CurrentCloud[Pixel] = FinalColor;
     //if (FinalColor.a > 0.1)
     //    //FinalColor = float4(saturate(pow(abs((MarchedNearColor - ReprojectionColor).r) + 1, 1.0) - 1), saturate(pow(abs((MarchedNearColor - ReprojectionColor).g) + 1, 1.0) - 1), saturate(pow(abs((MarchedNearColor - ReprojectionColor).b) + 1, 1.0) - 1), 1.0);
     //    FinalColor = float4(HistoryWeight, 0.0, 0.0, 1);
     //else
     //    FinalColor = float4(0.2, 0.2, 0.2, 1.0);
-    CurrentCloud[Pixel] = FinalColor;
+    
+    //float ColorTerm = max(ColorChanged - 0.01, 0.0) * kColorChangeSensitive;
+    //float MarchedTerm = MarchedColorChanged * kMarchedColorChangeSensitive;
+    //if (FinalColor.a > 0.01)
+    //    FinalColor = float4(saturate(ColorTerm), saturate(MarchedTerm), 0.0, 1.0);
+    //else
+    //    FinalColor = float4(0.0, 0.0, 0.2, 1.0);
+    
+    float ColorTerm = max(ColorChanged - 0.01, 0.0) * kColorChangeSensitive;
+    if (FinalColor.a > 0.01)
+        FinalColor = float4(saturate(ColorTerm), saturate(MotionPixels * 10.0), saturate(ClampWeight * 100.0), 1.0);
+    else
+        FinalColor = float4(0.0, 0.0, 0.2, 1.0);
+
     WriteCloudVelocity(Pixel, FinalColor.a, PreviusColor.a, PreviusUV * TargetSize, Position.xy);
     return FinalColor;
 }
