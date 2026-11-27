@@ -26,9 +26,11 @@ void main( uint3 DTid : SV_DispatchThreadID )
     float4 New = float4(D, Dilution);
     WindowDisplacement[DTid] = New;
     
-    float3 Committed = CommittedDisplacement[DTid].xyz;
+    uint3 GlobalCell = WindowOrigin / kSimulationCellVoxels + DTid;
+    float3 Committed = CommittedDisplacement[GlobalCell].xyz;
     bool bChanged = any(abs(New.xyz - Committed) > kOccupancyDisplacementThreshold);
     ChangeMask[DTid] = bChanged ? 1 : 0;
     if (bChanged)
-        CommittedDisplacement[DTid] = New;
+        CommittedDisplacement[GlobalCell] = New;
+
 }

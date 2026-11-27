@@ -225,7 +225,7 @@ namespace
 
     };
 
-    static const uint32_t kSimulationWindowSize = 64*4;
+    static const uint32_t kSimulationWindowSize = 64*2;
     static const uint32_t kSimulationCellVoxels = 2;
     static const uint32_t kSimulationWindowVoxels = kSimulationWindowSize*kSimulationCellVoxels;
 
