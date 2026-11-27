@@ -28,6 +28,25 @@ static const float kOctaveAttenuation = 0.5;
 static const float kOctaveContribution = 0.5;
 static const float kOctaveEccentricity = 0.5;
 
+static const float kMinStep = 1.0;
+
+//스텝 격자: sqrt(t) 공간 등간격 (skip 여부와 무관하게 같은 샘플 위치)
+float GetNextMarchT(float t)
+{
+    float u = sqrt(t) + StepScale * 0.5;
+    return max(u * u, t + kMinStep);
+}
+
+//skip 거리 이후의 첫 격자점
+float GetSkipMarchT(float t, float SkipDistance)
+{
+    float StepU = StepScale * 0.5;
+    float u = sqrt(t);
+    float Steps = ceil((sqrt(t + SkipDistance) - u) / StepU);
+    float SkipU = u + Steps * StepU;
+    return max(SkipU * SkipU, t + SkipDistance);
+}
+
 float GetMarchJitter(uint2 Pixel, float2 PixelOffset)
 {
     uint SampleIndex = FrameIndex / (kAmortizationSize * kAmortizationSize);
@@ -134,7 +153,8 @@ PS_OUT main(float4 Position : SV_Position, float2 UV : TEXCOORD0)
     float WeightSum = 0.0;
     
     float LightJitter = GetMarchJitter(Pixel, kLightJitterPixelOffset);
-    float t = Hit.x + GetMarchJitter(Pixel, 0.0) * max(1.0, sqrt(Hit.x) * StepScale);
+    float StartU = sqrt(Hit.x) + GetMarchJitter(Pixel, 0.0) * StepScale * 0.5;
+    float t = StartU * StartU;
 
     OccupancyGrid Grid = GetOccupancyGrid();
 
@@ -142,13 +162,14 @@ PS_OUT main(float4 Position : SV_Position, float2 UV : TEXCOORD0)
     {
         float3 RelPos = Dir * t;
         float3 Coord = (RelPos - BoundsMin) / BoundsSize;
-        float BaseStep = max(1.0, sqrt(t) * StepScale);
+        float NextT = GetNextMarchT(t);
+        float BaseStep = NextT - t;
 
         float SkipDistance = GetOccupancySkipDistance(RelPos - BoundsMin, Dir, Grid);
         if (SkipDistance > 0.0)
         {
-            t += SkipDistance;
-            continue;   
+            t = GetSkipMarchT(t, SkipDistance);
+            continue;
         }
 
         float Density = GetVoxelCloudDensity(Coord, RelPos + CameraPosition, t).y;
