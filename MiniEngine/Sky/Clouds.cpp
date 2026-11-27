@@ -243,6 +243,7 @@ namespace
     enum SimulationEventType{kEventExplosion, kEventWind, kEventVortex};
     const char* kSimulationEventLabels[] = { "Explosion", "Wind", "Vortex" };
     static const float kInjectionFadeRatio = 0.3f;
+    static const uint32_t kPoissonGroupLines = 16;
 
     BoolVar s_SimulationTrigger("Graphics/Clouds/Simulation/Trigger Event", false);
     BoolVar s_SimulationReset("Graphics/Clouds/Simulation/Reset Displacement", false);
@@ -264,7 +265,7 @@ namespace
     NumVar s_SimulationEventStrength("Graphics/Clouds/Simulation/Expansion Rate (1 per s) ", 5.0f, 0.0f, 500.0, 0.5f);
     IntVar s_SimulationJacobiIterations("Graphics/Clouds/Simulation/Jacobi Iteractions", 30, 2, 80, 2);
     NumVar s_SimulationEventDrag("Graphics/Clouds/Simulation/Drag ", 0.2f, 0.0f, 10.0f, 0.1f);
-    NumVar s_SimulationEventDuration("Graphics/Clouds/Simulation/Duration ", 8.0f, 1.0f, 30.0f, 1.0f);
+    NumVar s_SimulationEventDuration("Graphics/Clouds/Simulation/Duration ", 30.0f, 1.0f, 30.0f, 1.0f);
 
     NumVar s_SimulationEventBuoyancy("Graphics/Clouds/Simulation/Buoyancy (m per s2)", 40.0f, 0.0f, 400.0f, 4.0f);
     NumVar s_SimulationEventCooling("Graphics/Clouds/Simulation/Cooling ", 0.7f, 0.0f, 5.0f, 0.05f);
@@ -905,7 +906,7 @@ void Clouds::UpdateSimulation(ComputeContext& Context)
             Context.SetDynamicDescriptor(kUAVs, 0, s_SimulationPressure[0].GetUAV());
             for (uint32_t Pass = 0; Pass < 5; ++Pass) {
                 Context.SetConstants(kOccupancyConstants, kPassAxis[Pass], Pass == 2 ? 1u : 0u, Pass == 0 ? 1u : 0u);
-                Context.Dispatch(kSimulationWindowSize/2, kSimulationWindowSize, 1);
+                Context.Dispatch(kSimulationWindowSize / kPoissonGroupLines, kSimulationWindowSize, 1);
                 Context.InsertUAVBarrier(s_SimulationPressure[0]);
             }
         }
