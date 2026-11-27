@@ -61,17 +61,17 @@
     <FxCompile Include="Shaders\CloudBrickDistanceCS.hlsl">
       <ShaderType>Compute</ShaderType>
     </FxCompile>
-    <FxCompile Include="Shaders\CloudBrickOccupancyCS.hlsl">
+    <FxCompile Include="Shaders\CloudDisplacementClearCS.hlsl">
       <ShaderType>Compute</ShaderType>
     </FxCompile>
-    <FxCompile Include="Shaders\CloudDisplacementClearCS.hlsl">
+    <FxCompile Include="Shaders\CloudOccupancyClearCS.hlsl">
+      <ShaderType>Compute</ShaderType>
+    </FxCompile>
+    <FxCompile Include="Shaders\CloudOccupancyUpdateCS.hlsl">
       <ShaderType>Compute</ShaderType>
     </FxCompile>
     <FxCompile Include="Shaders\CloudReprojectionPS.hlsl">
       <ShaderType>Pixel</ShaderType>
-    </FxCompile>
-    <FxCompile Include="Shaders\CloudSectorOccupancyCS.hlsl">
-      <ShaderType>Compute</ShaderType>
     </FxCompile>
     <FxCompile Include="Shaders\CloudShadowCS.hlsl" />
     <FxCompile Include="Shaders\CloudSimulationAdvectionCS.hlsl">

@@ -54,12 +54,6 @@
     <FxCompile Include="Shaders\CloudAmortizationPS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
-    <FxCompile Include="Shaders\CloudBrickOccupancyCS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
-    <FxCompile Include="Shaders\CloudSectorOccupancyCS.hlsl">
-      <Filter>Shaders</Filter>
-    </FxCompile>
     <FxCompile Include="Shaders\CloudBrickDistanceCS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
@@ -91,6 +85,12 @@
       <Filter>Shaders</Filter>
     </FxCompile>
     <FxCompile Include="Shaders\CloudSimulationPoissonCS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\CloudOccupancyUpdateCS.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\CloudOccupancyClearCS.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
   </ItemGroup>

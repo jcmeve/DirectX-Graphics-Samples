@@ -19,9 +19,6 @@
 #include "CompiledShaders/SkyFullscreenVS.h"
 #include "CompiledShaders/SkyDebugViewVolumePS.h"
 #include "CompiledShaders/CloudShadowCS.h"
-#include "CompiledShaders/CloudBrickOccupancyCS.h"
-#include "CompiledShaders/CloudSectorOccupancyCS.h"
-
 
 #include "CompiledShaders/CloudVelocityMergeCS.h"
 #include "CompiledShaders/CloudLightCacheCS.h"
@@ -34,7 +31,8 @@
 #include "CompiledShaders/CloudSimulationPoissonCS.h"
 #include "CompiledShaders/CloudSimulationProjectCS.h"
 #include "CompiledShaders/CloudDisplacementClearCS.h"
-
+#include "CompiledShaders/CloudOccupancyUpdateCS.h"
+#include "CompiledShaders/CloudOccupancyClearCS.h"
 
 using namespace Graphics;
 
@@ -149,15 +147,40 @@ namespace
     const uint32_t kSectorBricks = 4;
     const uint32_t kMaxBrickDistance = 4;
 
-    ComputePSO s_CloudBrickOccupancyPSO(L"Clouds: Brick Occupancy CS");
-    ComputePSO s_CloudSectorOccupancyPSO(L"Clouds: Sector Occupancy CS");
+    ComputePSO s_CloudOccupancyUpdatePSO(L"Clouds: Occupancy Update CS");
+    ComputePSO s_CloudOccupancyClearPSO(L"Clouds: Occupancy Clear CS");
 
     VolumeBuffer s_BrickOccupancy;
     VolumeBuffer s_SectorOccupancy;
+
+    VolumeBuffer s_VoxelOccupancyBits;
+    VolumeBuffer s_SimulationChangeMask;
+    const uint32_t kOccupancyBitBlock[3] = { 4, 4, 2 };//32바이트 비트마스크 & 64복셀
+    bool s_bOccupancyRebuild = true;
+    bool s_bOccupancyWindowDirty = false;
+
     uint32_t s_BrickCount[3];
-    uint32_t s_DirtyVoxelMin[3];
-    uint32_t s_DirtyVoxelMax[3];
-    bool s_bOccupancyDirty = true;
+
+    struct OccupancyConstants
+    {
+        int32_t RegionMin[3];
+        uint32_t bFullRebuild;
+        int32_t WindowCellMin[3];
+        uint32_t Pad;
+    };
+
+    int FloorDiv(int Value, int Divisor)
+    {
+        return (Value >= 0 ? Value : Value - Divisor + 1) / Divisor;
+    }
+
+    void ClearOccupancyVolume(ComputeContext& Context, VolumeBuffer& Target)
+    {
+        Context.SetPipelineState(s_CloudOccupancyClearPSO);
+        Context.SetDynamicDescriptor(kUAVs, 0, Target.GetUAV());
+        Context.Dispatch3D(Target.GetWidth(), Target.GetHeight(), Target.GetDepth(), 4, 4, 4);
+        Context.InsertUAVBarrier(Target);
+    }
 
 #pragma endregion
 
@@ -235,7 +258,7 @@ namespace
     NumVar s_SimulationEventX("Graphics/Clouds/Simulation/EventX ", 0.5f, 0.0f, 1.0f, 0.01f);
     NumVar s_SimulationEventZ("Graphics/Clouds/Simulation/EventZ ", 0.5f, 0.0f, 1.0f, 0.01f);
     NumVar s_SimulationEventY("Graphics/Clouds/Simulation/EventY ", 0.13f, 0.0f, 1.0f, 0.01f);
-    NumVar s_SimulationEventRadius("Graphics/Clouds/Simulation/Radius (m) ", 120.0f, 15.0f, 1024.0f, 8.0f);
+    NumVar s_SimulationEventRadius("Graphics/Clouds/Simulation/Radius (m) ", 120.0f, 15.0f, 1024.0f*4, 8.0f);
 
     NumVar s_SimulationEventStrength("Graphics/Clouds/Simulation/Expansion Rate (1 per s) ", 5.0f, 0.0f, 500.0, 0.5f);
     IntVar s_SimulationJacobiIterations("Graphics/Clouds/Simulation/Jacobi Iteractions", 30, 2, 80, 2);
@@ -385,7 +408,7 @@ void Clouds::Initialize(void)
     s_RootSig[kCloudShadowCBV].InitAsConstantBuffer(4);
     s_RootSig[kSRVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 0, 16);
     s_RootSig[kUAVs].InitAsDescriptorRange(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 0, 6);
-    s_RootSig[kOccupancyConstants].InitAsConstants(5, 4);
+    s_RootSig[kOccupancyConstants].InitAsConstants(5, 8);
     s_RootSig[kSimulationCBV].InitAsConstantBuffer(6);
     s_RootSig.Finalize(L"Clouds");
 
@@ -423,13 +446,15 @@ void Clouds::Initialize(void)
     s_CloudAmortizationPSO.SetPixelShader(g_pCloudAmortizationPS, sizeof(g_pCloudAmortizationPS));
     s_CloudAmortizationPSO.Finalize(); 
 
-    s_CloudBrickOccupancyPSO.SetRootSignature(s_RootSig);
-    s_CloudBrickOccupancyPSO.SetComputeShader(g_pCloudBrickOccupancyCS, sizeof(g_pCloudBrickOccupancyCS));
-    s_CloudBrickOccupancyPSO.Finalize();
+    s_CloudOccupancyUpdatePSO.SetRootSignature(s_RootSig);
+    s_CloudOccupancyUpdatePSO.SetComputeShader(g_pCloudOccupancyUpdateCS, sizeof(g_pCloudOccupancyUpdateCS));
+    s_CloudOccupancyUpdatePSO.Finalize();
 
-    s_CloudSectorOccupancyPSO.SetRootSignature(s_RootSig);
-    s_CloudSectorOccupancyPSO.SetComputeShader(g_pCloudSectorOccupancyCS, sizeof(g_pCloudSectorOccupancyCS));
-    s_CloudSectorOccupancyPSO.Finalize();
+    s_CloudOccupancyClearPSO.SetRootSignature(s_RootSig);
+    s_CloudOccupancyClearPSO.SetComputeShader(g_pCloudOccupancyClearCS, sizeof(g_pCloudOccupancyClearCS));
+    s_CloudOccupancyClearPSO.Finalize();
+
+
 
     s_ShadowMapPSO.SetRootSignature(s_RootSig);
     s_ShadowMapPSO.SetComputeShader(g_pCloudShadowCS, sizeof(g_pCloudShadowCS));
@@ -472,8 +497,12 @@ void Clouds::Initialize(void)
     Source.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
     Source.SubresourceIndex = 0;
 
-    const D3D12_BOX SourceBox = { 0,0,0,(UINT)ModelingDesc.Width, (UINT)ModelingDesc.Height, (UINT)ModelingDesc.DepthOrArraySize };
-    InitContext.GetCommandList()->CopyTextureRegion(&Dest, 0, 0, 16, &Source, &SourceBox);
+    const D3D12_BOX SourceBox = { ModelingDesc.Width / 2 - 32 , ModelingDesc.Height / 2 - 32,0,ModelingDesc.Width / 2 + 32 , ModelingDesc.Height / 2 + 32, (UINT)ModelingDesc.DepthOrArraySize };
+    for (int i = 0; i < ModelingDesc.Width / 64; ++i) {
+        for (int j = 0; j < ModelingDesc.Height / 64; ++j) {
+            InitContext.GetCommandList()->CopyTextureRegion(&Dest, i*64, j*64, 16, &Source, &SourceBox);
+        }
+    }
 
     InitContext.TransitionResource(s_CloudVolume, kShaderResourceState);
     InitContext.Finish(true);
@@ -498,11 +527,14 @@ void Clouds::Initialize(void)
     }
     s_SectorOccupancy.Create(L"Cloud Sector Occupancy", SectorCount[0], SectorCount[1], SectorCount[2], 1, DXGI_FORMAT_R32_FLOAT);
 
-    const uint32_t VoxelMin[3] = { 0,0,0 };
-    SetVolumeDirty(VoxelMin, VoxelCount);
-    s_bOccupancyDirty = true;
+    s_BrickOccupancy.Create(L"Cloud Brick Occupancy", s_BrickCount[0], s_BrickCount[1], s_BrickCount[2], 1, DXGI_FORMAT_R32_UINT);
+    s_SectorOccupancy.Create(L"Cloud Sector Occupancy", SectorCount[0], SectorCount[1], SectorCount[2], 1, DXGI_FORMAT_R32_UINT);
 
+    s_VoxelOccupancyBits.Create(L"Cloud Voxel Occupancy Bits", VoxelCount[0] / kOccupancyBitBlock[0], VoxelCount[1] / kOccupancyBitBlock[1], VoxelCount[2] / kOccupancyBitBlock[2], 1, DXGI_FORMAT_R32_UINT);
+    s_SimulationChangeMask.Create(L"Cloud Simulation Change Mask", kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 1, DXGI_FORMAT_R8_UINT);
 
+    s_bOccupancyRebuild = true;
+    s_bLightCacheDirty = true;
 
     s_CloudSimulationVelocityPSO.SetRootSignature(s_RootSig);
     s_CloudSimulationVelocityPSO.SetComputeShader(g_pCloudSimulationVelocityCS, sizeof(g_pCloudSimulationVelocityCS));
@@ -566,8 +598,10 @@ void Clouds::Shutdown(void)
     s_CloudDepthRenderTarget.Destroy();
     s_CloudVelocity.Destroy();
     s_BrickOccupancy.Destroy();
-    s_LightCacheVolume.Destroy();
     s_SectorOccupancy.Destroy();
+    s_VoxelOccupancyBits.Destroy();
+    s_SimulationChangeMask.Destroy();
+    s_LightCacheVolume.Destroy();
     s_SimulationVelocity[0].Destroy();
     s_SimulationVelocity[1].Destroy();
     s_CloudDisplacement.Destroy();
@@ -685,53 +719,54 @@ void Clouds::RenderDebug(GraphicsContext& Context)
 
 void Clouds::UpdateOccupancy(ComputeContext& Context)
 {
-    if (!s_bOccupancyDirty)
+    if (!s_bOccupancyRebuild && !s_bOccupancyWindowDirty)
         return;
-    uint32_t BrickMin[3], BrickMax[3], DistanceMin[3], DistanceMax[3];
-
-    for (int i = 0; i < 3; ++i)
-    {
-        BrickMin[i] = (s_DirtyVoxelMin[i] > 0 ? s_DirtyVoxelMin[i] - 1 : 0) / kBrickVoxels;
-        BrickMax[i] = min(s_DirtyVoxelMax[i] / kBrickVoxels + 1, s_BrickCount[i]);
-
-        DistanceMin[i] = (BrickMin[i] > kMaxBrickDistance) ? BrickMin[i] - kMaxBrickDistance : 0;
-        DistanceMax[i] = min(BrickMax[i] + kMaxBrickDistance, s_BrickCount[i]);
-    }
 
     ScopedTimer _prof(L"Cloud Occupancy", Context);
-
     Context.SetRootSignature(s_RootSig);
-    Context.TransitionResource(s_BrickOccupancy, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+    Context.TransitionResource(s_SimulationChangeMask, kShaderResourceState);
+    Context.TransitionResource(s_VoxelOccupancyBits, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    Context.TransitionResource(s_BrickOccupancy, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     Context.TransitionResource(s_SectorOccupancy, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
-    Context.SetDynamicDescriptor(kSRVs, 5, s_CloudVolume.GetSRV());
-    Context.SetDynamicDescriptor(kSRVs, 15, s_CloudDisplacement.GetSRV());
-    Context.SetDynamicDescriptor(kUAVs, 0, s_BrickOccupancy.GetUAV());
-    Context.SetDynamicDescriptor(kUAVs, 1, s_SectorOccupancy.GetUAV());
 
-    Context.SetPipelineState(s_CloudBrickOccupancyPSO);
-    Context.SetConstants(kOccupancyConstants, BrickMin[0], BrickMin[1], BrickMin[2]);
-    Context.Dispatch(BrickMax[0] - BrickMin[0], BrickMax[1] - BrickMin[1], BrickMax[2] - BrickMin[2]);
-    Context.InsertUAVBarrier(s_BrickOccupancy);
-
-    Context.SetPipelineState(s_CloudSectorOccupancyPSO);
-    Context.SetConstants(kOccupancyConstants, DistanceMin[0], DistanceMin[1], DistanceMin[2]);
-    
-    uint32_t SectorMin[3], SectorMax[3];
-    for (int i = 0; i < 3; ++i)
+    OccupancyConstants Constants = {};
+    uint32_t TexelCount[3];
+    if (s_bOccupancyRebuild)
     {
-        SectorMin[i] = BrickMin[i] / kSectorBricks;
-        SectorMax[i] = (BrickMax[i] + kSectorBricks - 1) / kSectorBricks;
+        ClearOccupancyVolume(Context, s_VoxelOccupancyBits);
+        ClearOccupancyVolume(Context, s_BrickOccupancy);
+        ClearOccupancyVolume(Context, s_SectorOccupancy);
+        Constants.bFullRebuild = 1;
+        for (int i = 0; i < 3; ++i)
+            TexelCount[i] = s_VoxelCount[i] / kOccupancyBitBlock[i];
+    }
+    else
+    {
+        for (int i = 0; i < 3; ++i)
+        {
+            const int Origin = (int)s_SimulationWindowOrigin[i];
+            const int Block = (int)kOccupancyBitBlock[i];
+            Constants.RegionMin[i] = FloorDiv(Origin - 1, Block);
+            TexelCount[i] = (uint32_t)(FloorDiv(Origin + (int)kSimulationWindowVoxels, Block) + 1 - Constants.RegionMin[i]);
+            Constants.WindowCellMin[i] = Origin / (int)kSimulationCellVoxels;
+        }
     }
 
-    Context.SetPipelineState(s_CloudSectorOccupancyPSO);
-    Context.SetConstants(kOccupancyConstants, SectorMin[0], SectorMin[1], SectorMin[2]);
-    Context.Dispatch3D(SectorMax[0] - SectorMin[0], SectorMax[1] - SectorMin[1], SectorMax[2] - SectorMin[2], 4, 4, 4);
-    Context.InsertUAVBarrier(s_SectorOccupancy);
+    Context.SetPipelineState(s_CloudOccupancyUpdatePSO);
+    Context.SetConstantArray(kOccupancyConstants, 8, &Constants);
+    Context.SetDynamicDescriptor(kSRVs, 5, s_CloudVolume.GetSRV());
+    Context.SetDynamicDescriptor(kSRVs, 9, s_SimulationChangeMask.GetSRV());
+    Context.SetDynamicDescriptor(kSRVs, 15, s_CloudDisplacement.GetSRV());
+    Context.SetDynamicDescriptor(kUAVs, 0, s_VoxelOccupancyBits.GetUAV());
+    Context.SetDynamicDescriptor(kUAVs, 1, s_BrickOccupancy.GetUAV());
+    Context.SetDynamicDescriptor(kUAVs, 2, s_SectorOccupancy.GetUAV());
+    Context.Dispatch3D(TexelCount[0], TexelCount[1], TexelCount[2], 4, 4, 4);
 
     Context.TransitionResource(s_BrickOccupancy, kShaderResourceState);
     Context.TransitionResource(s_SectorOccupancy, kShaderResourceState);
 
-	s_bOccupancyDirty = false;
+    s_bOccupancyRebuild = false;
+    s_bOccupancyWindowDirty = false;
 }
 
 void Clouds::UpdateSimulation(ComputeContext& Context)
@@ -756,7 +791,8 @@ void Clouds::UpdateSimulation(ComputeContext& Context)
         Context.TransitionResource(s_CloudDisplacement, kShaderResourceState);
 
         const uint32_t VoxelMin[3] = { 0,0,0 };
-        SetVolumeDirty(VoxelMin, s_VoxelCount);
+        s_bOccupancyRebuild = true;
+        s_bLightCacheDirty = true;
     }
 
     const bool bEventActive = s_SimulationTrigger;
@@ -899,10 +935,12 @@ void Clouds::UpdateSimulation(ComputeContext& Context)
         //Advection
         Context.TransitionResource(Velocity, kShaderResourceState);
         Context.TransitionResource(s_SimulationDisplacement, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
+        Context.TransitionResource(s_SimulationChangeMask, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, true);
         Context.SetPipelineState(s_CloudSimulationAdvectionPSO);
         Context.SetDynamicDescriptor(kSRVs, 6, Velocity.GetSRV());
         Context.SetDynamicDescriptor(kSRVs, 15, s_CloudDisplacement.GetSRV());
         Context.SetDynamicDescriptor(kUAVs, 0, s_SimulationDisplacement.GetUAV());
+        Context.SetDynamicDescriptor(kUAVs, 1, s_SimulationChangeMask.GetUAV());
         Context.Dispatch3D(kSimulationWindowSize, kSimulationWindowSize, kSimulationWindowSize, 4, 4, 4);
     }
 
@@ -923,8 +961,8 @@ void Clouds::UpdateSimulation(ComputeContext& Context)
         s_SimulationWindowOrigin[1] + kSimulationWindowVoxels,
         s_SimulationWindowOrigin[2] + kSimulationWindowVoxels };
 
-    SetVolumeDirty(s_SimulationWindowOrigin, WindowMax);
-
+    s_bOccupancyWindowDirty = true;
+    s_bLightCacheDirty = true;
 }
 
 void Clouds::WriteVelocity(ComputeContext& Context)
@@ -942,16 +980,6 @@ void Clouds::WriteVelocity(ComputeContext& Context)
     Context.SetDynamicDescriptor(kSRVs, 0, s_CloudVelocity.GetSRV());
     Context.SetDynamicDescriptor(kUAVs, 0, g_VelocityBuffer.GetUAV());
     Context.Dispatch2D(s_CloudVelocity.GetWidth(), s_CloudVelocity.GetHeight(), 8, 8);
-}
-
-void Clouds::SetVolumeDirty(const uint32_t VoxelMin[3], const uint32_t VoxelMax[3])
-{
-    for (int i = 0; i < 3; ++i) {
-        s_DirtyVoxelMin[i] = s_bOccupancyDirty ? min(s_DirtyVoxelMin[i], VoxelMin[i]) : VoxelMin[i];
-        s_DirtyVoxelMax[i] = s_bOccupancyDirty ? max(s_DirtyVoxelMax[i],VoxelMax[i]) : VoxelMax[i];
-    }
-    s_bOccupancyDirty = true;
-    s_bLightCacheDirty = true;
 }
 
 void Clouds::RenderShadowMapAndLightCache(ComputeContext& Context, const Math::Camera& Camera, const Math::Vector3& SunDirection)

@@ -28,9 +28,9 @@ cbuffer CloudConstants : register(b3)
 Texture3D<float4> CloudNoise : register(t4); // RG = Curly-Alligator 저/고주파, BA = Alligator 저/고주파
 Texture3D<float4> CloudModeling : register(t5); // R = Dimensional Profile, G = Detail Type, B = Density Scale
 
-Texture3D<float> CloudBrickOccupancy : register(t12);
+Texture3D<uint> CloudBrickOccupancy : register(t12);
+Texture3D<uint> CloudSectorOccupancy : register(t13);
 
-Texture3D<float> CloudSectorOccupancy : register(t13);
 Texture3D<float4> CloudDisplacement : register(t15); //변위
 
 
@@ -86,11 +86,11 @@ float GetOccupancySkipDistance(float3 LocalPosition, float3 Dir, OccupancyGrid G
     int3 Sector = Brick / int(kSectorBricks);
 
     //빈 영역 검사
-    if (CloudSectorOccupancy[Sector.xzy] <= 0.0)
+    if (CloudSectorOccupancy[Sector.xzy] == 0)
     {
         return GetCellExitDistance(LocalPosition, Dir, Grid.SectorMeters) + kCellExitBias;
     }
-    if (CloudBrickOccupancy[Brick.xzy] <= 0.0)
+    if (CloudBrickOccupancy[Brick.xzy] == 0)
     {
         return GetCellExitDistance(LocalPosition, Dir, Grid.BrickMeters) + kCellExitBias;
     }
