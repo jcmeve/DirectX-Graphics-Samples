@@ -292,7 +292,6 @@ float4 SampleAerialPerspective(Texture3D<float4> Volume, SamplerState LinearClam
 //좌표기반 의사난수생성함수, 균일하고 성능이 좋다.
 float InterleavedGradientNoise(float2 Pixel, uint Frame)
 {
-    return 0;
     Pixel += 5.588238 * (float) (Frame % 64);
     return frac(52.9829189 * frac(dot(Pixel, float2(0.06711056, 0.00583715))));
 }

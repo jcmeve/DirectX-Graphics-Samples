@@ -25,6 +25,7 @@ static const uint kNoCloudVelocity = 0xFFFFFFFF;
 static const float kVelocityAlphaThreshold = 1.0 / 255.0;
 
 static const float kHistorySnapPixels = 0.05;
+static const float kChangeFloor = 0.05;
 
 float2 GetPreviusUV(float3 Dir, float Depth, out float4 ClipPosition)
 {
@@ -105,7 +106,7 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
 
         CurrentCloud[Pixel] = Color;
         WriteCloudVelocity(Pixel, Color.a, GetPreviusAlpha(PreviusUV), PreviusUV * TargetSize, Position.xy);
-        return float4(0.0, 0.0, 0.0, 1.0);;
+        return Color;
     }
     float2 LowUV = ((Position.xy - SampleOffset - 0.5) / kAmortizationSize + 0.5) / LowSize;
     float4 MarchedNearColor = CloudRenderTarget.SampleLevel(LinearClampSampler, LowUV, 0);
@@ -169,7 +170,8 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     float ClampWeight = saturate(MotionPixels * kMotionSensitive);
     float4 ReprojectionColor = lerp(PreviusColor, ClipToAABB(PreviusColor, BoxMin, BoxMax), ClampWeight);
     
-    float ColorChanged = length(PreviusColor - ReprojectionColor) / (length(PreviusColor) + length(ReprojectionColor) + 1e-5);
+    //float ColorChanged = length(PreviusColor - ReprojectionColor) / (length(PreviusColor) + length(ReprojectionColor) + 1e-5);
+    float ColorChanged = length(PreviusColor - ReprojectionColor) / (length(PreviusColor) + length(ReprojectionColor) + kChangeFloor);
     //float HistoryWeight = saturate(1.0 - max(ColorChanged - 0.01, 0.0) * kColorChangeSensitive);
     
     float2 LowTexel = LowUV * LowSize - 0.5;
@@ -189,13 +191,13 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
                 : PreviusCloud.SampleLevel(LinearClampSampler, MarchedPreviusUV, 0);
             
             float BilinearWeight = (Blockx ? LowFrac.x : 1.0 - LowFrac.x) * (BlockY ? LowFrac.y : 1.0 - LowFrac.y);
-            MarchedColorChanged += BilinearWeight * length(MarchedCurrent - MarchedPrevius) / (length(MarchedCurrent) + length(MarchedPrevius) + 1e-5);
-
+            //MarchedColorChanged += BilinearWeight * length(MarchedCurrent - MarchedPrevius) / (length(MarchedCurrent) + length(MarchedPrevius) + 1e-5);
+            MarchedColorChanged += BilinearWeight * length(MarchedCurrent - MarchedPrevius) / (length(MarchedCurrent) + length(MarchedPrevius) + kChangeFloor);
         }
     }
     MarchedColorChanged *= 1.0 - ClampWeight;
-    //float HistoryWeight = saturate(1.0 - max(max(ColorChanged - 0.01, 0.0) * kColorChangeSensitive, MarchedColorChanged*kMarchedColorChangeSensitive));
-    float HistoryWeight = saturate(1.0 - max(ColorChanged - 0.01, 0.0) * kColorChangeSensitive);
+    float HistoryWeight = saturate(1.0 - max(max(ColorChanged - 0.01, 0.0) * kColorChangeSensitive, MarchedColorChanged * kMarchedColorChangeSensitive));
+    //float HistoryWeight = saturate(1.0 - max(ColorChanged - 0.01, 0.0) * kColorChangeSensitive);
     float4 FinalColor = lerp(MarchedNearColor, ReprojectionColor, HistoryWeight);
     CurrentCloud[Pixel] = FinalColor;
     //if (FinalColor.a > 0.1)
@@ -211,11 +213,11 @@ float4 main(float4 Position : SV_Position, float2 UV : TEXCOORD0) : SV_Target0
     //else
     //    FinalColor = float4(0.0, 0.0, 0.2, 1.0);
     
-    float ColorTerm = max(ColorChanged - 0.01, 0.0) * kColorChangeSensitive;
-    if (FinalColor.a > 0.01)
-        FinalColor = float4(saturate(ColorTerm), saturate(MotionPixels * 10.0), saturate(ClampWeight * 100.0), 1.0);
-    else
-        FinalColor = float4(0.0, 0.0, 0.2, 1.0);
+    //float ColorTerm = max(ColorChanged - 0.01, 0.0) * kColorChangeSensitive;
+    //if (FinalColor.a > 0.01)
+    //    FinalColor = float4(saturate(ColorTerm), saturate(MotionPixels * 10.0), saturate(ClampWeight * 100.0), 1.0);
+    //else
+    //    FinalColor = float4(0.0, 0.0, 0.2, 1.0);
 
     WriteCloudVelocity(Pixel, FinalColor.a, PreviusColor.a, PreviusUV * TargetSize, Position.xy);
     return FinalColor;
