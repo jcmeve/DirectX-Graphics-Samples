@@ -905,7 +905,7 @@ void Clouds::UpdateSimulation(ComputeContext& Context)
             Context.SetDynamicDescriptor(kUAVs, 0, s_SimulationPressure[0].GetUAV());
             for (uint32_t Pass = 0; Pass < 5; ++Pass) {
                 Context.SetConstants(kOccupancyConstants, kPassAxis[Pass], Pass == 2 ? 1u : 0u, Pass == 0 ? 1u : 0u);
-                Context.Dispatch(kSimulationWindowSize, kSimulationWindowSize, 1);
+                Context.Dispatch(kSimulationWindowSize/2, kSimulationWindowSize, 1);
                 Context.InsertUAVBarrier(s_SimulationPressure[0]);
             }
         }
